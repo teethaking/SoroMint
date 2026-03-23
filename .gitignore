@@ -1,0 +1,31 @@
+# Node dependencies
+**/node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Rust / Soroban build artifacts
+contracts/target/
+**/target/
+
+# Frontend build outputs (Vite/React)
+client/dist/
+client/build/
+client/coverage/
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
+GITHUB_ISSUES_FORMATTED.md
+yarn-debug.log*
+yarn-error.log*
+.idea/
+.vscode/
+*.swp
+*.bak
