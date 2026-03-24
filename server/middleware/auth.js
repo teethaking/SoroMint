@@ -137,9 +137,7 @@ const authorize = (...roles) => {
       return next(new AppError('Authentication required.', 401, 'AUTH_REQUIRED'));
     }
 
-    // For now, we only have basic users - this is extensible for future role-based access
-    // In a more complex system, roles would be stored in the user model
-    if (!roles.includes('user') && !roles.includes('admin')) {
+    if (!roles.includes(req.user.role)) {
       return next(new AppError('Access denied. Insufficient permissions.', 403, 'ACCESS_DENIED'));
     }
 

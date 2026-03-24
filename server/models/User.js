@@ -55,6 +55,14 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ['active', 'suspended', 'deleted'],
     default: 'active'
+  },
+  /**
+   * User role for access control
+   */
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
   }
 }, {
   timestamps: true

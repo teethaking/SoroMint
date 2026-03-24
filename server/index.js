@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const Token = require('./models/Token');
+const DeploymentAudit = require('./models/DeploymentAudit');
 const stellarService = require('./services/stellar-service');
 const { errorHandler, notFoundHandler, asyncHandler, AppError } = require('./middleware/error-handler');
 const {
@@ -17,6 +18,7 @@ const { setupSwagger } = require('./config/swagger');
 const { authenticate } = require('./middleware/auth');
 const authRoutes = require('./routes/auth-routes');
 const statusRoutes = require('./routes/status-routes');
+const auditRoutes = require('./routes/audit-routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -43,6 +45,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/soromint')
 
 // Routes
 app.use('/api', statusRoutes);
+app.use('/api', auditRoutes);
 app.use('/api/auth', authRoutes);
 
 /**
@@ -108,30 +111,71 @@ app.get('/api/tokens/:owner', authenticate, asyncHandler(async (req, res) => {
  */
 app.post('/api/tokens', authenticate, asyncHandler(async (req, res) => {
   const { name, symbol, decimals, contractId, ownerPublicKey } = req.body;
+  const userId = req.user._id;
 
   logger.info('Creating new token', {
     correlationId: req.correlationId,
     name,
     symbol,
-    ownerPublicKey
+    ownerPublicKey,
+    userId
   });
 
   // Validate required fields
   if (!name || !symbol || !ownerPublicKey) {
+    const missingFields = { name: !name, symbol: !symbol, ownerPublicKey: !ownerPublicKey };
     logger.warn('Token creation failed - missing required fields', {
       correlationId: req.correlationId,
-      missingFields: { name: !name, symbol: !symbol, ownerPublicKey: !ownerPublicKey }
+      missingFields
     });
+    
+    // Log failed attempt due to validation
+    await DeploymentAudit.create({
+      userId,
+      tokenName: name || 'Unknown',
+      status: 'FAIL',
+      errorMessage: `Missing required fields: ${Object.keys(missingFields).filter(f => missingFields[f]).join(', ')}`
+    });
+
     throw new AppError('Missing required fields: name, symbol, and ownerPublicKey are required', 400, 'VALIDATION_ERROR');
   }
 
-  const newToken = new Token({ name, symbol, decimals, contractId, ownerPublicKey });
-  await newToken.save();
-  logger.info('Token created successfully', {
-    correlationId: req.correlationId,
-    tokenId: newToken._id
-  });
-  res.status(201).json(newToken);
+  try {
+    const newToken = new Token({ name, symbol, decimals, contractId, ownerPublicKey });
+    await newToken.save();
+    
+    logger.info('Token created successfully', {
+      correlationId: req.correlationId,
+      tokenId: newToken._id
+    });
+
+    // Log successful deployment
+    await DeploymentAudit.create({
+      userId,
+      tokenName: name,
+      contractId,
+      status: 'SUCCESS'
+    });
+
+    res.status(201).json(newToken);
+  } catch (error) {
+    logger.error('Token creation failed', {
+      correlationId: req.correlationId,
+      error: error.message
+    });
+
+    // Log failed deployment attempt
+    await DeploymentAudit.create({
+      userId,
+      tokenName: name,
+      contractId,
+      status: 'FAIL',
+      errorMessage: error.message
+    });
+
+    // Re-throw to be handled by error middleware
+    throw error;
+  }
 }));
 
 // 404 handler for undefined routes
