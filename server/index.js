@@ -1,7 +1,16 @@
+/**
+ * @title SoroMint Server Entry Point
+ * @description Main application entry point with environment validation
+ * @notice Initializes server with validated environment variables
+ */
+
+// Initialize and validate environment variables FIRST (fail-fast)
+const { initEnv } = require("./config/env-config");
+initEnv();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-require("dotenv").config();
 
 const Token = require("./models/Token");
 const DeploymentAudit = require("./models/DeploymentAudit");
@@ -26,8 +35,11 @@ const statusRoutes = require("./routes/status-routes");
 const auditRoutes = require("./routes/audit-routes");
 const tokenRoutes = require("./routes/token-routes");
 
+const { getEnv } = require("./config/env-config");
+
 const app = express();
-const PORT = process.env.PORT || 5000;
+const env = getEnv();
+const PORT = env.PORT;
 
 // Middleware
 app.use(cors());
@@ -42,7 +54,7 @@ setupSwagger(app);
 
 // Database Connection
 mongoose
-  .connect(process.env.MONGO_URI || "mongodb://localhost:27017/soromint")
+  .connect(env.MONGO_URI)
   .then(() => {
     logDatabaseConnection(true);
   })
@@ -63,7 +75,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  logStartupInfo(PORT, process.env.NETWORK_PASSPHRASE || "Unknown Network");
+  logStartupInfo(PORT, env.NETWORK_PASSPHRASE);
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(
     `📚 API Documentation available at http://localhost:${PORT}/api-docs`,
