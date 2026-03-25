@@ -23,13 +23,16 @@ const { errorHandler, AppError } = require('../../middleware/error-handler');
 // Test environment setup
 let mongoServer;
 let testUser;
+let adminUser;
 let validToken;
+let adminToken;
 let expiredToken;
 let invalidToken;
 
 // Valid Stellar public keys for testing (generated via Keypair.random())
 const TEST_PUBLIC_KEY = 'GDZYF2MVD4MMJIDNVTVCKRWP7F55N56CGKUCLH7SZ7KJQLGMMFMNVOVP';
 const TEST_PUBLIC_KEY_2 = 'GA2DQGWZTIICWQ7MZ5VZ6CKKXQOGCDHUUFIFO7YUG6SGX63BVG433GZD';
+const TEST_PUBLIC_KEY_3 = 'GAMDBSITFGKPOC6ZFLP7HXJFFQMQYMIOXJEFYRBZKM6XWJFFM6SXXHCV';
 
 /**
  * Helper to create a mock Express request object
@@ -71,8 +74,16 @@ beforeAll(async () => {
   });
   await testUser.save();
 
+  adminUser = new User({
+    publicKey: TEST_PUBLIC_KEY_3,
+    username: 'adminuser',
+    role: 'admin'
+  });
+  await adminUser.save();
+
   // Generate valid token
   validToken = generateToken(TEST_PUBLIC_KEY, 'testuser');
+  adminToken = generateToken(TEST_PUBLIC_KEY_3, 'adminuser');
 
   // Generate expired token
   expiredToken = jwt.sign(
@@ -93,6 +104,16 @@ afterEach(async () => {
     username: 'testuser'
   });
   await testUser.save();
+
+  adminUser = new User({
+    publicKey: TEST_PUBLIC_KEY_3,
+    username: 'adminuser',
+    role: 'admin'
+  });
+  await adminUser.save();
+
+  validToken = generateToken(TEST_PUBLIC_KEY, 'testuser');
+  adminToken = generateToken(TEST_PUBLIC_KEY_3, 'adminuser');
 });
 
 afterAll(async () => {
@@ -482,7 +503,7 @@ describe('Auth Middleware', () => {
   describe('authorize middleware', () => {
     it('should allow access if user has required role', async () => {
       const req = createMockRequest({
-        user: { publicKey: TEST_PUBLIC_KEY }
+        user: { publicKey: TEST_PUBLIC_KEY, role: 'user' }
       });
       const res = createMockResponse();
       const next = createMockNext();
@@ -495,7 +516,7 @@ describe('Auth Middleware', () => {
 
     it('should allow access if user has admin role', async () => {
       const req = createMockRequest({
-        user: { publicKey: TEST_PUBLIC_KEY }
+        user: { publicKey: TEST_PUBLIC_KEY_3, role: 'admin' }
       });
       const res = createMockResponse();
       const next = createMockNext();
@@ -522,7 +543,7 @@ describe('Auth Middleware', () => {
 
     it('should work with multiple roles', async () => {
       const req = createMockRequest({
-        user: { publicKey: TEST_PUBLIC_KEY }
+        user: { publicKey: TEST_PUBLIC_KEY, role: 'user' }
       });
       const res = createMockResponse();
       const next = createMockNext();
@@ -593,7 +614,7 @@ describe('Auth Middleware Integration', () => {
 
     const response = await request(app)
       .get('/admin')
-      .set('Authorization', `Bearer ${validToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);

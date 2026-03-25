@@ -2,7 +2,7 @@
  * @title Environment Configuration
  * @description Fail-fast environment variable validation using envalid
  * @notice Validates critical environment variables during server startup
- * @dev Prevents server from starting if required variables are missing
+ * @dev Prevents server from starting if required environment variables are missing
  */
 
 require("dotenv").config();
@@ -11,16 +11,10 @@ const { logger } = require("../utils/logger");
 
 /**
  * @notice Validates all required environment variables
- * @dev Uses envalid to ensure critical variables are present and valid
- * @throws {Error} Exits process if validation fails
+ * @returns {Object} Validated environment variables
  */
 function validateEnv() {
-  /**
-   * @notice Clean environment variables specification
-   * @dev Defines validation rules for each environment variable
-   */
   const cleanEnv = envalid.cleanEnv(process.env, {
-    // Server Configuration
     PORT: envalid.port({
       default: 5000,
       desc: "Port number for the Express server",
@@ -30,14 +24,10 @@ function validateEnv() {
       choices: ["development", "production", "test"],
       desc: "Application environment mode",
     }),
-
-    // Database Configuration
     MONGO_URI: envalid.url({
       desc: "MongoDB connection URI",
       example: "mongodb://localhost:27017/soromint",
     }),
-
-    // JWT Authentication
     JWT_SECRET: envalid.str({
       desc: "Secret key for JWT token signing",
       example: "your-super-secret-jwt-key",
@@ -46,8 +36,6 @@ function validateEnv() {
       default: "24h",
       desc: "JWT token expiration time",
     }),
-
-    // Stellar/Soroban Configuration
     SOROBAN_RPC_URLS: envalid.str({
       desc: "Comma-separated list of Soroban RPC endpoint URLs",
       example: "https://soroban-testnet.stellar.org,https://another-rpc.stellar.org",
@@ -62,33 +50,42 @@ function validateEnv() {
       default: "Test SDF Network ; September 2015",
       desc: "Stellar network passphrase",
     }),
-
-    // Optional Configuration
     ADMIN_SECRET_KEY: envalid.str({
       default: "",
       desc: "Optional admin secret key for server-side signing",
+    }),
+    LOGIN_RATE_LIMIT_WINDOW_MS: envalid.num({
+      default: 15 * 60 * 1000,
+      desc: "Login rate limit window in milliseconds",
+    }),
+    LOGIN_RATE_LIMIT_MAX_REQUESTS: envalid.num({
+      default: 5,
+      desc: "Maximum login attempts per rate limit window",
+    }),
+    TOKEN_DEPLOY_RATE_LIMIT_WINDOW_MS: envalid.num({
+      default: 60 * 60 * 1000,
+      desc: "Token deployment rate limit window in milliseconds",
+    }),
+    TOKEN_DEPLOY_RATE_LIMIT_MAX_REQUESTS: envalid.num({
+      default: 10,
+      desc: "Maximum token deployments per rate limit window",
     }),
   });
 
   logger.info("Environment variables validated successfully", {
     nodeEnv: cleanEnv.NODE_ENV,
     port: cleanEnv.PORT,
-    mongoUri: cleanEnv.MONGO_URI.replace(/\/\/.*@/, "//***@"), // Hide credentials in logs
+    mongoUri: cleanEnv.MONGO_URI ? cleanEnv.MONGO_URI.replace(/\/\/.*@/, "//***@") : undefined,
     sorobanRpcUrls: cleanEnv.SOROBAN_RPC_URLS || cleanEnv.SOROBAN_RPC_URL,
   });
 
   return cleanEnv;
 }
 
-/**
- * @notice Exported validated environment variables
- * @dev Call validateEnv() early in application startup
- */
 let validatedEnv = null;
 
 /**
- * @notice Initialize and validate environment
- * @dev Must be called before accessing any environment variables
+ * @notice Initialize and cache the validated environment variables
  * @returns {Object} Validated environment variables
  */
 function initEnv() {
@@ -106,23 +103,24 @@ function initEnv() {
       process.exit(1);
     }
   }
+
   return validatedEnv;
 }
 
 /**
- * @notice Get validated environment variables
- * @dev Returns cached validated environment
+ * @notice Returns the cached environment or initializes it on first access
  * @returns {Object} Validated environment variables
  */
 function getEnv() {
   if (!validatedEnv) {
     return initEnv();
   }
+
   return validatedEnv;
 }
 
 module.exports = {
+  validateEnv,
   initEnv,
   getEnv,
-  validateEnv,
 };

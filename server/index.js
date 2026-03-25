@@ -1,26 +1,19 @@
+require("dotenv").config();
+
 /**
  * @title SoroMint Server Entry Point
  * @description Main application entry point with environment validation
- * @notice Initializes server with validated environment variables
+ * @notice Initializes the backend and registers all route modules
  */
 
-// Initialize and validate environment variables FIRST (fail-fast)
-const { initEnv } = require("./config/env-config");
+const { initEnv, getEnv } = require("./config/env-config");
 initEnv();
 
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
-const Token = require("./models/Token");
-const DeploymentAudit = require("./models/DeploymentAudit");
-const stellarService = require("./services/stellar-service");
-const {
-  errorHandler,
-  notFoundHandler,
-  asyncHandler,
-  AppError,
-} = require("./middleware/error-handler");
+const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const {
   logger,
   correlationIdMiddleware,
@@ -29,55 +22,66 @@ const {
   logDatabaseConnection,
 } = require("./utils/logger");
 const { setupSwagger } = require("./config/swagger");
-const { authenticate } = require("./middleware/auth");
 const authRoutes = require("./routes/auth-routes");
 const statusRoutes = require("./routes/status-routes");
 const auditRoutes = require("./routes/audit-routes");
 const tokenRoutes = require("./routes/token-routes");
 
-const { getEnv } = require("./config/env-config");
+const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) => {
+  const app = express();
 
-const app = express();
-const env = getEnv();
-const PORT = env.PORT;
+  app.use(cors());
+  app.use(express.json());
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+  app.use(correlationIdMiddleware);
+  app.use(httpLoggerMiddleware);
 
-// Logging middleware (must be early in the chain)
-app.use(correlationIdMiddleware);
-app.use(httpLoggerMiddleware);
+  setupSwagger(app);
 
-// Set up API Documentation
-setupSwagger(app);
+  app.use("/api", statusRoutes);
+  app.use("/api", auditRoutes);
+  app.use("/api", tokenRouter);
+  app.use("/api/auth", authRouter);
 
-// Database Connection
-mongoose
-  .connect(env.MONGO_URI)
-  .then(() => {
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+
+  return app;
+};
+
+const connectDatabase = async () => {
+  const env = getEnv();
+
+  try {
+    await mongoose.connect(env.MONGO_URI);
     logDatabaseConnection(true);
-  })
-  .catch((err) => {
-    logDatabaseConnection(false, err);
+  } catch (error) {
+    logDatabaseConnection(false, error);
+    throw error;
+  }
+};
+
+const startServer = async () => {
+  const env = getEnv();
+  await connectDatabase();
+  const app = createApp();
+
+  app.listen(env.PORT, () => {
+    logStartupInfo(env.PORT, env.NETWORK_PASSPHRASE);
+    console.log(`Server running on http://localhost:${env.PORT}`);
+    console.log(`API Documentation available at http://localhost:${env.PORT}/api-docs`);
   });
+};
 
-// Routes
-app.use("/api", statusRoutes);
-app.use("/api", auditRoutes);
-app.use("/api", tokenRoutes);
-app.use("/api/auth", authRoutes);
+if (require.main === module) {
+  startServer().catch((error) => {
+    logger.error("Server failed to start", { error: error.message });
+    process.exit(1);
+  });
+}
 
-// 404 handler for undefined routes
-app.use(notFoundHandler);
-
-// Centralized error handling middleware (must be last)
-app.use(errorHandler);
-
-app.listen(PORT, () => {
-  logStartupInfo(PORT, env.NETWORK_PASSPHRASE);
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(
-    `📚 API Documentation available at http://localhost:${PORT}/api-docs`,
-  );
-});
+module.exports = {
+  createApp,
+  connectDatabase,
+  startServer,
+};
