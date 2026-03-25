@@ -1,364 +1,497 @@
 #![cfg(test)]
+
 use super::*;
 use soroban_sdk::{
-    symbol_short, testutils::Address as _, testutils::Events, Address, Env, IntoVal, String, Val,
-    Vec,
+    symbol_short,
+    testutils::{Address as _, Events},
+    Address, Env, IntoVal, String, Val, Vec,
 };
 
-// ---------------------------------------------------------------------------
-// Helper: bootstraps a fresh contract environment with an initialized token.
-// ---------------------------------------------------------------------------
 fn setup() -> (Env, Address, Address, SoroMintTokenClient<'static>) {
-    let e = Env::default();
-    e.mock_all_auths();
+    let env = Env::default();
+    env.mock_all_auths();
 
-    let admin = Address::generate(&e);
-    let user = Address::generate(&e);
-    let token_id = e.register_contract(None, SoroMintToken);
-    let client = SoroMintTokenClient::new(&e, &token_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let contract_id = env.register(SoroMintToken, ());
+    let client = SoroMintTokenClient::new(&env, &contract_id);
 
     client.initialize(
         &admin,
         &7,
-        &String::from_str(&e, "SoroMint"),
-        &String::from_str(&e, "SMT"),
+        &String::from_str(&env, "SoroMint"),
+        &String::from_str(&env, "SMT"),
     );
 
-    (e, admin, user, client)
+    (env, admin, user, client)
 }
 
-/// Helper: finds the last event emitted by the contract and returns its data.
-/// In Soroban SDK v22, `e.events().all()` retains only the most recent
-/// invocation's events, so we simply grab the last entry.
-fn last_event_data(e: &Env) -> Val {
-    let events = e.events().all();
+fn last_event_data(env: &Env) -> Val {
+    let events = env.events().all();
     let last = events.last().expect("expected at least one event");
     last.2
 }
 
-/// Helper: finds the last event whose topic[1] matches `action`.
-fn find_event_by_action(e: &Env, action: Val) -> Option<Val> {
-    let events = e.events().all();
-    events
+fn find_event_by_action(env: &Env, action: Val) -> Option<Val> {
+    env.events()
+        .all()
         .iter()
         .rev()
-        .find(|(_cid, topics, _data)| {
-            let t: Vec<Val> = topics.clone();
-            t.len() == 2 && t.get(1).unwrap().get_payload() == action.get_payload()
+        .find(|(_, topics, _)| {
+            let topic_values: Vec<Val> = topics.clone();
+            topic_values.len() == 2
+                && topic_values.get(1).unwrap().get_payload() == action.get_payload()
         })
-        .map(|(_cid, _topics, data)| data)
+        .map(|(_, _, data)| data)
 }
 
-// ===========================================================================
-// Initialization Tests
-// ===========================================================================
-
 #[test]
-fn test_initialize_and_mint() {
+fn test_initialize_sets_zero_supply_and_no_user_balance() {
     let (_, _, user, client) = setup();
-    client.mint(&user, &1000);
-    assert_eq!(client.balance(&user), 1000);
+
+    assert_eq!(client.supply(), 0);
+    assert_eq!(client.balance(&user), 0);
 }
 
 #[test]
-fn test_initialize_emits_event() {
-    let e = Env::default();
-    e.mock_all_auths();
-    let admin = Address::generate(&e);
-    let token_id = e.register_contract(None, SoroMintToken);
-    let client = SoroMintTokenClient::new(&e, &token_id);
+fn test_initialize_emits_metadata_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroMintToken, ());
+    let client = SoroMintTokenClient::new(&env, &contract_id);
 
     client.initialize(
         &admin,
         &7,
-        &String::from_str(&e, "SoroMint"),
-        &String::from_str(&e, "SMT"),
+        &String::from_str(&env, "SoroMint"),
+        &String::from_str(&env, "SMT"),
     );
 
-    // The last (and only) event should be the init event
-    let data: (Address, u32, String, String) = last_event_data(&e).into_val(&e);
+    let data: (Address, u32, String, String) = last_event_data(&env).into_val(&env);
     assert_eq!(data.0, admin);
     assert_eq!(data.1, 7);
-    assert_eq!(data.2, String::from_str(&e, "SoroMint"));
-    assert_eq!(data.3, String::from_str(&e, "SMT"));
+    assert_eq!(data.2, String::from_str(&env, "SoroMint"));
+    assert_eq!(data.3, String::from_str(&env, "SMT"));
 }
 
 #[test]
 #[should_panic(expected = "already initialized")]
-fn test_double_initialize() {
-    let (e, admin, _, _client) = setup();
-    let token_id = e.register_contract(None, SoroMintToken);
-    let client2 = SoroMintTokenClient::new(&e, &token_id);
-    client2.initialize(
+fn test_double_initialize_panics() {
+    let (env, admin, _, _) = setup();
+    let contract_id = env.register(SoroMintToken, ());
+    let client = SoroMintTokenClient::new(&env, &contract_id);
+
+    client.initialize(
         &admin,
         &7,
-        &String::from_str(&e, "SoroMint"),
-        &String::from_str(&e, "SMT"),
+        &String::from_str(&env, "SoroMint"),
+        &String::from_str(&env, "SMT"),
     );
-    // This second call should panic
-    client2.initialize(
+    client.initialize(
         &admin,
         &7,
-        &String::from_str(&e, "SoroMint"),
-        &String::from_str(&e, "SMT"),
+        &String::from_str(&env, "SoroMint"),
+        &String::from_str(&env, "SMT"),
     );
 }
 
-// ===========================================================================
-// Mint Tests
-// ===========================================================================
+#[test]
+fn test_mint_updates_balance_and_supply() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &1_000);
+
+    assert_eq!(client.balance(&user), 1_000);
+    assert_eq!(client.supply(), 1_000);
+}
 
 #[test]
-fn test_mint_emits_event_with_payload() {
-    let (e, admin, user, client) = setup();
+fn test_sequential_mints_preserve_running_totals() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &400);
+    client.mint(&user, &250);
+
+    assert_eq!(client.balance(&user), 650);
+    assert_eq!(client.supply(), 650);
+}
+
+#[test]
+fn test_minting_multiple_accounts_keeps_balances_isolated() {
+    let (env, _, user_one, client) = setup();
+    let user_two = Address::generate(&env);
+
+    client.mint(&user_one, &700);
+    client.mint(&user_two, &300);
+
+    assert_eq!(client.balance(&user_one), 700);
+    assert_eq!(client.balance(&user_two), 300);
+    assert_eq!(client.supply(), 1_000);
+}
+
+#[test]
+fn test_mint_emits_event_with_new_balance_and_supply() {
+    let (env, admin, user, client) = setup();
 
     client.mint(&user, &500);
 
-    // Verify data payload: (admin, to, amount, new_balance, new_supply)
-    let data: (Address, Address, i128, i128, i128) = last_event_data(&e).into_val(&e);
+    let data: (Address, Address, i128, i128, i128) = last_event_data(&env).into_val(&env);
     assert_eq!(data.0, admin);
     assert_eq!(data.1, user);
-    assert_eq!(data.2, 500); // amount
-    assert_eq!(data.3, 500); // new_balance
-    assert_eq!(data.4, 500); // new_supply
+    assert_eq!(data.2, 500);
+    assert_eq!(data.3, 500);
+    assert_eq!(data.4, 500);
 }
 
 #[test]
-fn test_mint_updates_supply() {
+#[should_panic(expected = "mint amount must be positive")]
+fn test_mint_zero_panics() {
     let (_, _, user, client) = setup();
-    client.mint(&user, &1000);
-    assert_eq!(client.supply(), 1000);
-
-    client.mint(&user, &500);
-    assert_eq!(client.supply(), 1500);
-}
-
-#[test]
-fn test_mint_zero_amount() {
-    let (e, admin, user, client) = setup();
 
     client.mint(&user, &0);
-
-    assert_eq!(client.balance(&user), 0);
-    assert_eq!(client.supply(), 0);
-
-    // Verify the mint event still emits with zero values.
-    // Use find_event_by_action since the SDK may or may not include it
-    // alongside other internal events.
-    let action: Val = symbol_short!("mint").into_val(&e);
-    if let Some(event_data) = find_event_by_action(&e, action) {
-        let data: (Address, Address, i128, i128, i128) = event_data.into_val(&e);
-        assert_eq!(data.0, admin);
-        assert_eq!(data.1, user);
-        assert_eq!(data.2, 0); // amount
-        assert_eq!(data.3, 0); // new_balance
-        assert_eq!(data.4, 0); // new_supply
-    }
-    // If no event found, the SDK optimized it away — acceptable behavior.
 }
 
 #[test]
-fn test_sequential_mints_carry_running_totals() {
-    let (e, admin, user, client) = setup();
-
-    client.mint(&user, &100);
-
-    // Verify first mint event payload
-    let d1: (Address, Address, i128, i128, i128) = last_event_data(&e).into_val(&e);
-    assert_eq!(d1.0, admin);
-    assert_eq!(d1.2, 100); // amount
-    assert_eq!(d1.3, 100); // new_balance
-    assert_eq!(d1.4, 100); // new_supply
-
-    client.mint(&user, &200);
-
-    // Verify second mint event reflects running totals
-    let d2: (Address, Address, i128, i128, i128) = last_event_data(&e).into_val(&e);
-    assert_eq!(d2.0, admin);
-    assert_eq!(d2.2, 200); // amount
-    assert_eq!(d2.3, 300); // new_balance = 100 + 200
-    assert_eq!(d2.4, 300); // new_supply = 100 + 200
-}
-
-// ===========================================================================
-// Burn Tests
-// ===========================================================================
-
-#[test]
-fn test_burn() {
+#[should_panic(expected = "mint amount must be positive")]
+fn test_mint_negative_panics() {
     let (_, _, user, client) = setup();
 
-    client.mint(&user, &1000);
-    assert_eq!(client.balance(&user), 1000);
-    assert_eq!(client.supply(), 1000);
+    client.mint(&user, &-1);
+}
 
+#[test]
+#[should_panic(expected = "balance overflow")]
+fn test_mint_overflow_panics() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &i128::MAX);
+    client.mint(&user, &1);
+}
+
+#[test]
+fn test_transfer_moves_balance_without_changing_supply() {
+    let (env, _, user, client) = setup();
+    let recipient = Address::generate(&env);
+
+    client.mint(&user, &1_000);
+    client.transfer(&user, &recipient, &300);
+
+    assert_eq!(client.balance(&user), 700);
+    assert_eq!(client.balance(&recipient), 300);
+    assert_eq!(client.supply(), 1_000);
+}
+
+#[test]
+fn test_transfer_to_self_keeps_same_balance_and_supply() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &500);
+    client.transfer(&user, &user, &200);
+
+    assert_eq!(client.balance(&user), 500);
+    assert_eq!(client.supply(), 500);
+}
+
+#[test]
+fn test_transfer_emits_expected_event() {
+    let (env, _, user, client) = setup();
+    let recipient = Address::generate(&env);
+
+    client.mint(&user, &900);
+    client.transfer(&user, &recipient, &250);
+
+    let data: (Address, Address, i128, i128, i128) = last_event_data(&env).into_val(&env);
+    assert_eq!(data.0, user);
+    assert_eq!(data.1, recipient);
+    assert_eq!(data.2, 250);
+    assert_eq!(data.3, 650);
+    assert_eq!(data.4, 250);
+}
+
+#[test]
+#[should_panic(expected = "transfer amount must be positive")]
+fn test_transfer_zero_panics() {
+    let (env, _, user, client) = setup();
+    let recipient = Address::generate(&env);
+
+    client.mint(&user, &100);
+    client.transfer(&user, &recipient, &0);
+}
+
+#[test]
+#[should_panic(expected = "insufficient balance")]
+fn test_transfer_more_than_balance_panics() {
+    let (env, _, user, client) = setup();
+    let recipient = Address::generate(&env);
+
+    client.mint(&user, &100);
+    client.transfer(&user, &recipient, &101);
+}
+
+#[test]
+fn test_approve_sets_and_overwrites_allowance() {
+    let (env, _, user, client) = setup();
+    let spender = Address::generate(&env);
+
+    client.approve(&user, &spender, &300);
+    assert_eq!(client.allowance(&user, &spender), 300);
+
+    client.approve(&user, &spender, &125);
+    assert_eq!(client.allowance(&user, &spender), 125);
+}
+
+#[test]
+fn test_approve_zero_clears_allowance() {
+    let (env, _, user, client) = setup();
+    let spender = Address::generate(&env);
+
+    client.approve(&user, &spender, &50);
+    client.approve(&user, &spender, &0);
+
+    assert_eq!(client.allowance(&user, &spender), 0);
+}
+
+#[test]
+fn test_approve_emits_expected_event() {
+    let (env, _, user, client) = setup();
+    let spender = Address::generate(&env);
+
+    client.approve(&user, &spender, &220);
+
+    let data: (Address, Address, i128) = last_event_data(&env).into_val(&env);
+    assert_eq!(data.0, user);
+    assert_eq!(data.1, spender);
+    assert_eq!(data.2, 220);
+}
+
+#[test]
+#[should_panic(expected = "allowance amount cannot be negative")]
+fn test_approve_negative_panics() {
+    let (env, _, user, client) = setup();
+    let spender = Address::generate(&env);
+
+    client.approve(&user, &spender, &-1);
+}
+
+#[test]
+fn test_transfer_from_uses_allowance_and_updates_balances() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.mint(&owner, &1_000);
+    client.approve(&owner, &spender, &400);
+    client.transfer_from(&spender, &owner, &recipient, &250);
+
+    assert_eq!(client.balance(&owner), 750);
+    assert_eq!(client.balance(&recipient), 250);
+    assert_eq!(client.allowance(&owner, &spender), 150);
+    assert_eq!(client.supply(), 1_000);
+}
+
+#[test]
+fn test_transfer_from_to_self_consumes_allowance_without_changing_balance() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+
+    client.mint(&owner, &500);
+    client.approve(&owner, &spender, &200);
+    client.transfer_from(&spender, &owner, &owner, &120);
+
+    assert_eq!(client.balance(&owner), 500);
+    assert_eq!(client.allowance(&owner, &spender), 80);
+    assert_eq!(client.supply(), 500);
+}
+
+#[test]
+fn test_transfer_from_emits_expected_event() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.mint(&owner, &800);
+    client.approve(&owner, &spender, &500);
+    client.transfer_from(&spender, &owner, &recipient, &300);
+
+    let action: Val = symbol_short!("xfer_from").into_val(&env);
+    let event = find_event_by_action(&env, action).expect("expected transfer_from event");
+    let data: (Address, Address, Address, i128, i128, i128, i128) = event.into_val(&env);
+    assert_eq!(data.0, spender);
+    assert_eq!(data.1, owner);
+    assert_eq!(data.2, recipient);
+    assert_eq!(data.3, 300);
+    assert_eq!(data.4, 200);
+    assert_eq!(data.5, 500);
+    assert_eq!(data.6, 300);
+}
+
+#[test]
+#[should_panic(expected = "insufficient allowance")]
+fn test_transfer_from_more_than_allowance_panics() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.mint(&owner, &500);
+    client.approve(&owner, &spender, &100);
+    client.transfer_from(&spender, &owner, &recipient, &101);
+}
+
+#[test]
+#[should_panic(expected = "insufficient balance")]
+fn test_transfer_from_more_than_balance_panics_even_with_allowance() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.mint(&owner, &100);
+    client.approve(&owner, &spender, &300);
+    client.transfer_from(&spender, &owner, &recipient, &150);
+}
+
+#[test]
+fn test_transfer_from_exhausts_allowance_exactly() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.mint(&owner, &250);
+    client.approve(&owner, &spender, &250);
+    client.transfer_from(&spender, &owner, &recipient, &250);
+
+    assert_eq!(client.balance(&owner), 0);
+    assert_eq!(client.balance(&recipient), 250);
+    assert_eq!(client.allowance(&owner, &spender), 0);
+}
+
+#[test]
+fn test_transfer_from_sequential_calls_preserve_running_state() {
+    let (env, _, owner, client) = setup();
+    let spender = Address::generate(&env);
+    let recipient_one = Address::generate(&env);
+    let recipient_two = Address::generate(&env);
+
+    client.mint(&owner, &1_000);
+    client.approve(&owner, &spender, &700);
+    client.transfer_from(&spender, &owner, &recipient_one, &200);
+    client.transfer_from(&spender, &owner, &recipient_two, &300);
+
+    assert_eq!(client.balance(&owner), 500);
+    assert_eq!(client.balance(&recipient_one), 200);
+    assert_eq!(client.balance(&recipient_two), 300);
+    assert_eq!(client.allowance(&owner, &spender), 200);
+    assert_eq!(client.supply(), 1_000);
+}
+
+#[test]
+fn test_burn_updates_balance_and_supply() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &1_000);
     client.burn(&user, &400);
+
     assert_eq!(client.balance(&user), 600);
     assert_eq!(client.supply(), 600);
 }
 
 #[test]
-fn test_burn_emits_event_with_payload() {
-    let (e, admin, user, client) = setup();
-
-    client.mint(&user, &1000);
-    client.burn(&user, &300);
-
-    // Verify data payload: (admin, from, amount, new_balance, new_supply)
-    let data: (Address, Address, i128, i128, i128) = last_event_data(&e).into_val(&e);
-    assert_eq!(data.0, admin);
-    assert_eq!(data.1, user);
-    assert_eq!(data.2, 300); // amount burned
-    assert_eq!(data.3, 700); // new_balance = 1000 - 300
-    assert_eq!(data.4, 700); // new_supply  = 1000 - 300
-}
-
-#[test]
-#[should_panic(expected = "insufficient balance to burn")]
-fn test_burn_insufficient_balance() {
+fn test_burn_all_tokens_restores_zero_state() {
     let (_, _, user, client) = setup();
-
-    client.mint(&user, &100);
-    client.burn(&user, &200); // Should panic
-}
-
-#[test]
-fn test_burn_all_tokens() {
-    let (e, admin, user, client) = setup();
 
     client.mint(&user, &500);
     client.burn(&user, &500);
 
     assert_eq!(client.balance(&user), 0);
     assert_eq!(client.supply(), 0);
-
-    // Verify the burn event has correct zero post-state.
-    // The SDK may not retain events when all result values are zero.
-    let action: Val = symbol_short!("burn").into_val(&e);
-    if let Some(event_data) = find_event_by_action(&e, action) {
-        let data: (Address, Address, i128, i128, i128) = event_data.into_val(&e);
-        assert_eq!(data.0, admin);
-        assert_eq!(data.1, user);
-        assert_eq!(data.2, 500); // amount
-        assert_eq!(data.3, 0); // new_balance = 0
-        assert_eq!(data.4, 0); // new_supply = 0
-    }
-    // State correctness (balance=0, supply=0) is verified above regardless.
-}
-
-// ===========================================================================
-// Ownership Transfer Tests
-// ===========================================================================
-
-#[test]
-fn test_transfer_ownership() {
-    let (e, _old_admin, user, client) = setup();
-
-    let new_admin = Address::generate(&e);
-    client.transfer_ownership(&new_admin);
-
-    // The new admin should be able to mint
-    client.mint(&user, &500);
-    assert_eq!(client.balance(&user), 500);
 }
 
 #[test]
-fn test_transfer_ownership_emits_event_with_payload() {
-    let (e, old_admin, _, client) = setup();
+fn test_burn_emits_event_with_new_balance_and_supply() {
+    let (env, admin, user, client) = setup();
 
-    let new_admin = Address::generate(&e);
-    client.transfer_ownership(&new_admin);
+    client.mint(&user, &900);
+    client.burn(&user, &300);
 
-    // Verify data payload: (prev_admin, new_admin)
-    let data: (Address, Address) = last_event_data(&e).into_val(&e);
-    assert_eq!(data.0, old_admin);
-    assert_eq!(data.1, new_admin);
+    let data: (Address, Address, i128, i128, i128) = last_event_data(&env).into_val(&env);
+    assert_eq!(data.0, admin);
+    assert_eq!(data.1, user);
+    assert_eq!(data.2, 300);
+    assert_eq!(data.3, 600);
+    assert_eq!(data.4, 600);
 }
 
 #[test]
-fn test_total_supply_zero_after_initialize() {
-    let (_e, _admin, client) = setup();
-    assert_eq!(client.total_supply(), 0);
-}
+#[should_panic(expected = "insufficient balance to burn")]
+fn test_burn_more_than_balance_panics() {
+    let (_, _, user, client) = setup();
 
-#[test]
-fn test_total_supply_increases_on_mint() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
-    client.mint(&user, &500);
-    assert_eq!(client.total_supply(), 500);
-    client.mint(&user, &300);
-    assert_eq!(client.total_supply(), 800);
-}
-
-#[test]
-fn test_total_supply_decreases_on_burn() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
-    client.mint(&user, &1000);
-    client.burn(&user, &400);
-    assert_eq!(client.total_supply(), 600);
-    assert_eq!(client.balance(&user), 600);
-}
-
-#[test]
-fn test_supply_equals_sum_of_balances() {
-    let (e, _admin, client) = setup();
-    let user1 = Address::generate(&e);
-    let user2 = Address::generate(&e);
-    client.mint(&user1, &700);
-    client.mint(&user2, &300);
-    client.burn(&user1, &200);
-    let sum = client.balance(&user1) + client.balance(&user2);
-    assert_eq!(client.total_supply(), sum);
-}
-
-// The Soroban host wraps contract panics in a HostError envelope.
-// The balance overflows first (i128::MAX + 1), which the host surfaces as WasmVm/InvalidAction.
-// We match on the inner panic message fragment visible in the host error log.
-#[test]
-#[should_panic(expected = "balance overflow")]
-fn test_mint_overflow() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
-    client.mint(&user, &i128::MAX);
-    client.mint(&user, &1);
-}
-
-#[test]
-#[should_panic(expected = "insufficient balance")]
-fn test_burn_exceeds_balance() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
     client.mint(&user, &100);
     client.burn(&user, &101);
-}
-
-// Note: supply underflow is unreachable via normal ops because the insufficient-balance
-// guard always fires first (a holder can never have balance > total_supply).
-// This test verifies that burning more than a holder's balance panics correctly.
-#[test]
-#[should_panic(expected = "insufficient balance")]
-fn test_burn_exceeds_balance_guard() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
-    client.mint(&user, &100);
-    client.burn(&user, &200);
-}
-
-#[test]
-#[should_panic(expected = "mint amount must be positive")]
-fn test_mint_zero_panics() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
-    client.mint(&user, &0);
 }
 
 #[test]
 #[should_panic(expected = "burn amount must be positive")]
 fn test_burn_zero_panics() {
-    let (e, _admin, client) = setup();
-    let user = Address::generate(&e);
+    let (_, _, user, client) = setup();
+
     client.mint(&user, &100);
     client.burn(&user, &0);
+}
+
+#[test]
+#[should_panic(expected = "burn amount must be positive")]
+fn test_burn_negative_panics() {
+    let (_, _, user, client) = setup();
+
+    client.mint(&user, &100);
+    client.burn(&user, &-1);
+}
+
+#[test]
+fn test_supply_matches_sum_of_balances_after_mixed_operations() {
+    let (env, _, user_one, client) = setup();
+    let user_two = Address::generate(&env);
+    let user_three = Address::generate(&env);
+    let spender = Address::generate(&env);
+
+    client.mint(&user_one, &700);
+    client.mint(&user_two, &300);
+    client.approve(&user_one, &spender, &150);
+    client.transfer_from(&spender, &user_one, &user_three, &125);
+    client.burn(&user_one, &200);
+
+    let total_user_balances =
+        client.balance(&user_one) + client.balance(&user_two) + client.balance(&user_three);
+    assert_eq!(client.supply(), total_user_balances);
+}
+
+#[test]
+fn test_transfer_ownership_emits_expected_event() {
+    let (env, old_admin, _, client) = setup();
+    let new_admin = Address::generate(&env);
+
+    client.transfer_ownership(&new_admin);
+
+    let data: (Address, Address) = last_event_data(&env).into_val(&env);
+    assert_eq!(data.0, old_admin);
+    assert_eq!(data.1, new_admin);
+}
+
+#[test]
+fn test_transfer_ownership_changes_admin_used_in_follow_up_mint_event() {
+    let (env, _, user, client) = setup();
+    let new_admin = Address::generate(&env);
+
+    client.transfer_ownership(&new_admin);
+    client.mint(&user, &250);
+
+    let mint_action: Val = symbol_short!("mint").into_val(&env);
+    let mint_event = find_event_by_action(&env, mint_action).expect("expected mint event");
+    let data: (Address, Address, i128, i128, i128) = mint_event.into_val(&env);
+    assert_eq!(data.0, new_admin);
+    assert_eq!(data.1, user);
+    assert_eq!(data.2, 250);
+    assert_eq!(data.3, 250);
+    assert_eq!(data.4, 250);
 }

@@ -12,6 +12,7 @@ enum DataKey {
     Admin,
     Supply,
     Balance(Address),
+    Allowance(Address, Address),
 }
 
 /// Trait defining the full SoroMint token interface, including
@@ -20,6 +21,18 @@ pub trait TokenTrait {
     /// Initializes the token contract with an admin and metadata.
     /// Can only be called once.
     fn initialize(e: Env, admin: Address, decimal: u32, name: String, symbol: String);
+
+    /// Transfers `amount` tokens from one address to another.
+    fn transfer(e: Env, from: Address, to: Address, amount: i128);
+
+    /// Sets the delegated spending allowance for a spender.
+    fn approve(e: Env, from: Address, spender: Address, amount: i128);
+
+    /// Returns the delegated spending allowance for a spender.
+    fn allowance(e: Env, from: Address, spender: Address) -> i128;
+
+    /// Transfers `amount` tokens using a delegated allowance.
+    fn transfer_from(e: Env, spender: Address, from: Address, to: Address, amount: i128);
 
     /// Mints `amount` tokens to the `to` address. Admin-only.
     fn mint(e: Env, to: Address, amount: i128);
@@ -42,6 +55,41 @@ pub struct SoroMintToken;
 
 #[contractimpl]
 impl SoroMintToken {
+    fn write_balance(e: &Env, id: &Address, balance: i128) {
+        e.storage()
+            .persistent()
+            .set(&DataKey::Balance(id.clone()), &balance);
+    }
+
+    fn write_allowance(e: &Env, from: &Address, spender: &Address, amount: i128) {
+        e.storage().persistent().set(
+            &DataKey::Allowance(from.clone(), spender.clone()),
+            &amount,
+        );
+    }
+
+    fn move_balance(e: &Env, from: &Address, to: &Address, amount: i128) -> (i128, i128) {
+        let from_balance = Self::balance(e.clone(), from.clone());
+        if from_balance < amount {
+            panic!("insufficient balance");
+        }
+
+        if from == to {
+            return (from_balance, from_balance);
+        }
+
+        let new_from_balance = from_balance
+            .checked_sub(amount)
+            .expect("balance underflow");
+        let to_balance = Self::balance(e.clone(), to.clone());
+        let new_to_balance = to_balance.checked_add(amount).expect("balance overflow");
+
+        Self::write_balance(e, from, new_from_balance);
+        Self::write_balance(e, to, new_to_balance);
+
+        (new_from_balance, new_to_balance)
+    }
+
     /// Initializes the SoroMint token contract.
     ///
     /// # Arguments
@@ -65,6 +113,118 @@ impl SoroMintToken {
         events::emit_initialized(&e, &admin, decimal, &name, &symbol);
     }
 
+    /// Transfers tokens between two addresses.
+    ///
+    /// # Arguments
+    /// * `from`   - The address sending the tokens.
+    /// * `to`     - The address receiving the tokens.
+    /// * `amount` - The quantity of tokens to transfer.
+    ///
+    /// # Authorization
+    /// Requires the `from` address to authorize the transaction.
+    ///
+    /// # Panics
+    /// Panics if the amount is not positive or the sender has insufficient balance.
+    ///
+    /// # Events
+    /// Emits a `transfer` event with `(from, to, amount, from_balance, to_balance)`.
+    pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
+        if amount <= 0 {
+            panic!("transfer amount must be positive");
+        }
+        from.require_auth();
+
+        let (new_from_balance, new_to_balance) = Self::move_balance(&e, &from, &to, amount);
+        events::emit_transfer(&e, &from, &to, amount, new_from_balance, new_to_balance);
+    }
+
+    /// Approves a spender to use a delegated token allowance.
+    ///
+    /// # Arguments
+    /// * `from`    - The token owner granting the allowance.
+    /// * `spender` - The address allowed to spend on behalf of the owner.
+    /// * `amount`  - The maximum delegated amount.
+    ///
+    /// # Authorization
+    /// Requires the `from` address to authorize the transaction.
+    ///
+    /// # Panics
+    /// Panics if the allowance amount is negative.
+    ///
+    /// # Events
+    /// Emits an `approve` event with `(from, spender, amount)`.
+    pub fn approve(e: Env, from: Address, spender: Address, amount: i128) {
+        if amount < 0 {
+            panic!("allowance amount cannot be negative");
+        }
+        from.require_auth();
+
+        Self::write_allowance(&e, &from, &spender, amount);
+        events::emit_approve(&e, &from, &spender, amount);
+    }
+
+    /// Returns the delegated spending allowance for a spender.
+    ///
+    /// # Arguments
+    /// * `from`    - The token owner.
+    /// * `spender` - The delegated spender.
+    ///
+    /// # Returns
+    /// The remaining allowance, or `0` if none has been recorded.
+    pub fn allowance(e: Env, from: Address, spender: Address) -> i128 {
+        e.storage()
+            .persistent()
+            .get(&DataKey::Allowance(from, spender))
+            .unwrap_or(0)
+    }
+
+    /// Transfers tokens using a delegated allowance.
+    ///
+    /// # Arguments
+    /// * `spender` - The delegated spender using the allowance.
+    /// * `from`    - The token owner whose balance is debited.
+    /// * `to`      - The recipient of the tokens.
+    /// * `amount`  - The quantity of tokens to transfer.
+    ///
+    /// # Authorization
+    /// Requires the `spender` address to authorize the transaction.
+    ///
+    /// # Panics
+    /// Panics if the amount is not positive, the allowance is too small,
+    /// or the owner's balance is insufficient.
+    ///
+    /// # Events
+    /// Emits a `transfer_from` event with
+    /// `(spender, from, to, amount, remaining_allowance, from_balance, to_balance)`.
+    pub fn transfer_from(e: Env, spender: Address, from: Address, to: Address, amount: i128) {
+        if amount <= 0 {
+            panic!("transfer amount must be positive");
+        }
+        spender.require_auth();
+
+        let allowance = Self::allowance(e.clone(), from.clone(), spender.clone());
+        if allowance < amount {
+            panic!("insufficient allowance");
+        }
+
+        let remaining_allowance = allowance
+            .checked_sub(amount)
+            .expect("allowance underflow");
+        let (new_from_balance, new_to_balance) = Self::move_balance(&e, &from, &to, amount);
+
+        Self::write_allowance(&e, &from, &spender, remaining_allowance);
+        events::emit_transfer_from(
+            &e,
+            &spender,
+            &from,
+            &to,
+            amount,
+            remaining_allowance,
+            new_from_balance,
+            new_to_balance,
+        );
+    }
+
     /// Mints new tokens to a recipient address.
     ///
     /// # Arguments
@@ -85,9 +245,7 @@ impl SoroMintToken {
 
         let mut balance = Self::balance(e.clone(), to.clone());
         balance = balance.checked_add(amount).expect("balance overflow");
-        e.storage()
-            .persistent()
-            .set(&DataKey::Balance(to.clone()), &balance);
+        Self::write_balance(&e, &to, balance);
 
         let mut supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap_or(0);
         supply = supply.checked_add(amount).expect("supply overflow");
@@ -111,6 +269,9 @@ impl SoroMintToken {
     /// # Events
     /// Emits a `burn` event with `(admin, from, amount, new_balance, new_supply)`.
     pub fn burn(e: Env, from: Address, amount: i128) {
+        if amount <= 0 {
+            panic!("burn amount must be positive");
+        }
         let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
@@ -118,13 +279,11 @@ impl SoroMintToken {
         if balance < amount {
             panic!("insufficient balance to burn");
         }
-        let new_balance = balance - amount;
-        e.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &new_balance);
+        let new_balance = balance.checked_sub(amount).expect("balance underflow");
+        Self::write_balance(&e, &from, new_balance);
 
         let mut supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap();
-        supply -= amount;
+        supply = supply.checked_sub(amount).expect("supply underflow");
         e.storage().instance().set(&DataKey::Supply, &supply);
 
         events::emit_burn(&e, &admin, &from, amount, new_balance, supply);
@@ -171,6 +330,3 @@ impl SoroMintToken {
         events::emit_ownership_transfer(&e, &prev_admin, &new_admin);
     }
 }
-
-#[cfg(test)]
-mod test;

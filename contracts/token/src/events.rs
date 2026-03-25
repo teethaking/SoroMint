@@ -10,6 +10,9 @@
 /// | `initialized`        | `("SoroMint", "init")`                       | `(admin, decimal, name, symbol)`                          |
 /// | `mint`               | `("SoroMint", "mint")`                       | `(admin, to, amount, new_balance, new_supply)`            |
 /// | `burn`               | `("SoroMint", "burn")`                       | `(admin, from, amount, new_balance, new_supply)`          |
+/// | `transfer`           | `("SoroMint", "transfer")`                   | `(from, to, amount, from_balance, to_balance)`            |
+/// | `approve`            | `("SoroMint", "approve")`                    | `(from, spender, amount)`                                 |
+/// | `transfer_from`      | `("SoroMint", "xfer_from")`                  | `(spender, from, to, amount, allowance, from_balance, to_balance)` |
 /// | `ownership_transfer` | `("SoroMint", "xfer_own")`                   | `(prev_admin, new_admin)`                                 |
 ///
 /// Each function accepts the environment and the relevant parameters,
@@ -89,6 +92,61 @@ pub fn emit_burn(
     env.events().publish(
         topics,
         (admin.clone(), from.clone(), amount, new_balance, new_supply),
+    );
+}
+
+/// Emits a `transfer` event when tokens move between addresses.
+pub fn emit_transfer(
+    env: &Env,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+    new_from_balance: i128,
+    new_to_balance: i128,
+) {
+    let topics = (symbol_short!("SoroMint"), symbol_short!("transfer"));
+    env.events().publish(
+        topics,
+        (
+            from.clone(),
+            to.clone(),
+            amount,
+            new_from_balance,
+            new_to_balance,
+        ),
+    );
+}
+
+/// Emits an `approve` event when an allowance is set or updated.
+pub fn emit_approve(env: &Env, from: &Address, spender: &Address, amount: i128) {
+    let topics = (symbol_short!("SoroMint"), symbol_short!("approve"));
+    env.events()
+        .publish(topics, (from.clone(), spender.clone(), amount));
+}
+
+/// Emits a `transfer_from` event when delegated allowance is used.
+pub fn emit_transfer_from(
+    env: &Env,
+    spender: &Address,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+    remaining_allowance: i128,
+    new_from_balance: i128,
+    new_to_balance: i128,
+) {
+    let topics = (symbol_short!("SoroMint"), symbol_short!("xfer_from"));
+    env.events().publish(
+        topics,
+        (
+            spender.clone(),
+            from.clone(),
+            to.clone(),
+            amount,
+            remaining_allowance,
+            new_from_balance,
+            new_to_balance,
+        ),
     );
 }
 
