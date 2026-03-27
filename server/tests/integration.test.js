@@ -69,7 +69,8 @@ beforeAll(async () => {
   process.env.NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
 
   // Import Express app identical to production wiring (index.js)
-  app = require('../index');
+  const { createApp } = require('../index');
+  app = createApp();
 });
 
 afterAll(async () => {
