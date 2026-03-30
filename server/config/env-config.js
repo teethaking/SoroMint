@@ -46,13 +46,28 @@ function validateEnv() {
       example: "https://soroban-testnet.stellar.org",
       default: "https://soroban-testnet.stellar.org",
     }),
+    HORIZON_URL: envalid.url({
+      desc: "Horizon API endpoint URL for fee stats and network data",
+      example: "https://horizon-testnet.stellar.org",
+      default: "https://horizon-testnet.stellar.org",
+    }),
     NETWORK_PASSPHRASE: envalid.str({
       default: "Test SDF Network ; September 2015",
       desc: "Stellar network passphrase",
     }),
+    HORIZON_URL: envalid.url({
+      default: "https://horizon-testnet.stellar.org",
+      desc: "Horizon server URL for event streaming",
+      example: "https://horizon-testnet.stellar.org",
+    }),
     ADMIN_SECRET_KEY: envalid.str({
       default: "",
       desc: "Optional secret key for admin bypass",
+    }),
+    SENTRY_DSN: envalid.str({
+      default: "",
+      desc: "Sentry DSN for error tracking (leave empty to disable)",
+      example: "https://<key>@o0.ingest.sentry.io/<project>",
     }),
     LOGIN_RATE_LIMIT_WINDOW_MS: envalid.num({
       default: 15 * 60 * 1000,
@@ -69,6 +84,22 @@ function validateEnv() {
     TOKEN_DEPLOY_RATE_LIMIT_MAX_REQUESTS: envalid.num({
       default: 10,
       desc: "Maximum token deployments per rate limit window",
+    }),
+    METRICS_INTERVAL_MS: envalid.num({
+      default: 30000,
+      desc: "Resource metrics sampling interval in milliseconds",
+    }),
+    ALERT_THRESHOLD_CPU: envalid.num({
+      default: 85,
+      desc: "CPU usage % that triggers an alert (0-100)",
+    }),
+    ALERT_THRESHOLD_MEMORY: envalid.num({
+      default: 85,
+      desc: "Memory usage % that triggers an alert (0-100)",
+    }),
+    ALERT_THRESHOLD_DISK: envalid.num({
+      default: 90,
+      desc: "Disk usage % that triggers an alert (0-100)",
     }),
   }, {
     reporter: ({ errors, env }) => {

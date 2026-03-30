@@ -5,8 +5,7 @@ describe('Stellar Service', () => {
     process.env.SOROBAN_RPC_URL = 'https://localhost:8000';
     const server = getRpcServer();
     expect(server).toBeDefined();
-    // In @stellar/stellar-sdk, serverUrl is a property
-    expect(server.serverURL).toBeDefined();
+    expect(server.urls).toBeDefined();
   });
 
   it('should wrap XLM asset correctly', async () => {

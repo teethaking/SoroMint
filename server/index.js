@@ -16,6 +16,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const { securityHeaders } = require("./middleware/security-headers");
 
+const { initSentry } = require("./config/sentry");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const {
   logger,
@@ -25,15 +26,18 @@ const {
   logDatabaseConnection,
 } = require("./utils/logger");
 const { setupSwagger } = require("./config/swagger");
+const { sampler } = require("./services/resource-sampler");
 const authRoutes = require("./routes/auth-routes");
 const statusRoutes = require("./routes/status-routes");
 const auditRoutes = require("./routes/audit-routes");
 const tokenRoutes = require("./routes/token-routes");
+const webhookRoutes = require("./routes/webhook-routes");
 const analyticsRoutes = require("./routes/analytics-routes");
 
 const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) => {
   const app = express();
 
+  initSentry(app);
   app.use(securityHeaders);
   app.use(cors());
   app.use(express.json());
@@ -48,6 +52,7 @@ const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) 
   app.use("/api", tokenRouter);
   app.use("/api", analyticsRoutes);
   app.use("/api/auth", authRouter);
+  app.use("/api", webhookRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
@@ -74,6 +79,7 @@ const startServer = async () => {
 
   app.listen(env.PORT, () => {
     logStartupInfo(env.PORT, env.NETWORK_PASSPHRASE);
+    sampler.start();
     console.log(`Server running on http://localhost:${env.PORT}`);
     console.log(`API Documentation available at http://localhost:${env.PORT}/api-docs`);
     scheduleBackups();

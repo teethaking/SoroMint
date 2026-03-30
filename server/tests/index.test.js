@@ -23,7 +23,7 @@ describe("Server Index", () => {
       NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
     });
 
-    jest.doMock("mongoose", () => ({ connect }));
+    jest.doMock("mongoose", () => ({ connect, Schema: class Schema { index() {} }, model: jest.fn(() => ({})) }));
     jest.doMock("../config/env-config", () => ({ initEnv, getEnv }));
     jest.doMock("../utils/logger", () => ({
       logger: { error: jest.fn() },
@@ -37,6 +37,11 @@ describe("Server Index", () => {
     jest.doMock("../routes/status-routes", () => (req, res, next) => next());
     jest.doMock("../routes/audit-routes", () => (req, res, next) => next());
     jest.doMock("../routes/token-routes", () => (req, res, next) => next());
+    jest.doMock("../routes/webhook-routes", () => (req, res, next) => next());
+    jest.doMock("../routes/analytics-routes", () => (req, res, next) => next());
+    jest.doMock("../middleware/security-headers", () => ({ securityHeaders: (req, res, next) => next() }));
+    jest.doMock("../services/backup-service", () => ({ scheduleBackups: jest.fn() }));
+    jest.doMock("../config/sentry", () => ({ initSentry: jest.fn() }));
     jest.doMock("../middleware/error-handler", () => ({
       errorHandler: jest.fn((err, req, res, next) => next(err)),
       notFoundHandler: jest.fn((req, res, next) => next()),
@@ -72,7 +77,7 @@ describe("Server Index", () => {
     jest.spyOn(console, "log").mockImplementation(() => {});
     jest.doMock("express", () => expressFn);
     jest.doMock("cors", () => jest.fn(() => "cors-middleware"));
-    jest.doMock("mongoose", () => ({ connect }));
+    jest.doMock("mongoose", () => ({ connect, Schema: class Schema { index() {} }, model: jest.fn(() => ({})) }));
     jest.doMock("../config/env-config", () => ({ initEnv, getEnv }));
     jest.doMock("../utils/logger", () => ({
       logger: { error: jest.fn() },
@@ -86,6 +91,11 @@ describe("Server Index", () => {
     jest.doMock("../routes/status-routes", () => "status-routes");
     jest.doMock("../routes/audit-routes", () => "audit-routes");
     jest.doMock("../routes/token-routes", () => "token-routes");
+    jest.doMock("../routes/webhook-routes", () => "webhook-routes");
+    jest.doMock("../routes/analytics-routes", () => "analytics-routes");
+    jest.doMock("../middleware/security-headers", () => ({ securityHeaders: jest.fn((req, res, next) => next()) }));
+    jest.doMock("../services/backup-service", () => ({ scheduleBackups: jest.fn() }));
+    jest.doMock("../config/sentry", () => ({ initSentry: jest.fn() }));
     jest.doMock("../middleware/error-handler", () => ({
       errorHandler: "error-handler",
       notFoundHandler: "not-found-handler",
