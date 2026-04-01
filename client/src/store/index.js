@@ -65,18 +65,30 @@ export const useTokenStore = create(
 );
 
 // UI Store - Manages UI state like modals, themes, etc.
-export const useUIStore = create((set) => ({
-  theme: 'dark',
-  isSidebarOpen: false,
-  
-  setTheme: (theme) => set({ theme }),
-  
-  toggleSidebar: () => set((state) => ({ 
-    isSidebarOpen: !state.isSidebarOpen 
-  })),
-  
-  closeSidebar: () => set({ isSidebarOpen: false })
-}));
+export const useUIStore = create(
+  persist(
+    (set) => ({
+      theme: 'dark',
+      isSidebarOpen: false,
+      
+      setTheme: (theme) => set({ theme }),
+      
+      toggleTheme: () => set((state) => {
+        const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+        return { theme: newTheme };
+      }),
+      
+      toggleSidebar: () => set((state) => ({ 
+        isSidebarOpen: !state.isSidebarOpen 
+      })),
+      
+      closeSidebar: () => set({ isSidebarOpen: false })
+    }),
+    {
+      name: 'ui-storage', // localStorage key
+    }
+  )
+);
 
 // Combined App State (optional - for convenience)
 export const useAppStore = create((set, get) => ({

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { Wallet, Coins, Plus, List, ArrowRight, ShieldCheck } from 'lucide-react';
 import { SkeletonList, SkeletonTokenForm } from './components/Skeleton';
-import { useWalletStore, useTokenStore } from './store';
+import { useWalletStore, useTokenStore, useUIStore } from './store';
+import ThemeToggle from './components/ThemeToggle';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -12,6 +13,7 @@ function App() {
   const { t } = useTranslation();
   const { address, setWallet, disconnectWallet } = useWalletStore();
   const { tokens, addToken, isLoading, fetchTokens } = useTokenStore();
+  const { theme, setTheme } = useUIStore();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -20,6 +22,25 @@ function App() {
   });
   const [isMinting, setIsMinting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // Apply theme to document and detect system preference
+  useEffect(() => {
+    // If no theme is set yet, detect system preference
+    if (!theme) {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(systemPrefersDark ? 'dark' : 'light');
+    }
+  }, [theme, setTheme]);
+
+  useEffect(() => {
+    // Apply theme class to document element
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
 
   const connectWallet = async () => {
     const mockAddress = 'GB...' + Math.random().toString(36).substring(7).toUpperCase();
@@ -77,18 +98,22 @@ function App() {
           </h1>
         </div>
 
-        <button
-          onClick={address ? disconnectWallet : connectWallet}
-          className="flex items-center gap-2 btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          aria-label={address ? 'Wallet connected' : 'Connect wallet'}
-        >
-          <Wallet size={18} aria-hidden="true" />
-          <span>
-            {address
-              ? `${address.substring(0, 6)}...${address.slice(-4)}`
-              : 'Connect Wallet'}
-          </span>
-        </button>
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          
+          <button
+            onClick={address ? disconnectWallet : connectWallet}
+            className="flex items-center gap-2 btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            aria-label={address ? 'Wallet connected' : 'Connect wallet'}
+          >
+            <Wallet size={18} aria-hidden="true" />
+            <span>
+              {address
+                ? `${address.substring(0, 6)}...${address.slice(-4)}`
+                : 'Connect Wallet'}
+            </span>
+          </button>
+        </div>
       </header>
 
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-8" role="main">
