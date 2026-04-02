@@ -1,20 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
 import { Wallet, Coins, Plus, List, ArrowRight, ShieldCheck } from 'lucide-react';
 import { SkeletonList, SkeletonTokenForm } from './components/Skeleton';
+import { useWalletStore, useTokenStore, useUIStore } from './store';
+import ThemeToggle from './components/ThemeToggle';
+import ThemeToggle from './components/ThemeToggle';
 import { useWalletStore, useTokenStore } from './store';
 import React from "react"
 import { useForm } from "react-hook-form"
 import axios from "axios"
 
-export default function App() {
-  const { register, handleSubmit, formState: { errors } } = useForm()
+const API_BASE = 'http://localhost:5000/api';
 
 function App() {
   // Use Zustand stores for global state
   const { address, setWallet, disconnectWallet } = useWalletStore();
   const { tokens, addToken, isLoading, setLoading, fetchTokens } = useTokenStore();
   
+  const { t } = useTranslation();
+  const { address, setWallet, disconnectWallet } = useWalletStore();
+  const { tokens, addToken, isLoading, fetchTokens } = useTokenStore();
+  const { theme, setTheme } = useUIStore();
+
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
@@ -22,6 +31,25 @@ function App() {
   });
   const [isMinting, setIsMinting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // Apply theme to document and detect system preference
+  useEffect(() => {
+    // If no theme is set yet, detect system preference
+    if (!theme) {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(systemPrefersDark ? 'dark' : 'light');
+    }
+  }, [theme, setTheme]);
+
+  useEffect(() => {
+    // Apply theme class to document element
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
 
   const connectWallet = async () => {
     const mockAddress = 'GB...' + Math.random().toString(36).substring(7).toUpperCase();
@@ -31,24 +59,14 @@ function App() {
 
     setAddress(mockAddress);
     setStatusMessage('Wallet connected');
+    toast.success(t('app.walletConnected') || 'Wallet connected');
     fetchTokens(mockAddress);
-  };
-
-  const fetchTokens = async (userAddress) => {
-    try {
-      const resp = await axios.get(`${API_BASE}/tokens/${userAddress}`);
-      setTokens(resp.data);
-    } catch (err) {
-      console.error('Error fetching tokens', err);
-      setStatusMessage('Error fetching tokens');
-    }
   };
 
   const handleMint = async (e) => {
     e.preventDefault();
-
     if (!address) {
-      setStatusMessage('Please connect wallet first');
+      toast.warn(t('mint.connectFirst') || 'Please connect wallet first');
       return;
     }
 
@@ -66,9 +84,11 @@ function App() {
 
       addToken(resp.data);
       setFormData({ name: '', symbol: '', decimals: 7 });
-      setStatusMessage('Token minted successfully');
+      setStatusMessage('');
+      toast.success(t('mint.success') || 'Token minted successfully');
     } catch (err) {
-      setStatusMessage('Minting failed: ' + err.message);
+      setStatusMessage('');
+      toast.error((t('mint.failed') || 'Minting failed') + ': ' + err.message);
     } finally {
       setIsMinting(false);
     }
@@ -76,7 +96,7 @@ function App() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12" role="application">
-      
+
       {/* Screen Reader Live Region */}
       <div aria-live="polite" className="sr-only">
         {statusMessage}
@@ -96,22 +116,28 @@ function App() {
           onClick={address ? disconnectWallet : connectWallet}
           className="flex items-center gap-2 btn-primary"
 
-        <button
-          onClick={connectWallet}
-          className="flex items-center gap-2 btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          aria-label={address ? 'Wallet connected' : 'Connect wallet'}
-        >
-          <Wallet size={18} aria-hidden="true" />
-          <span>
-            {address
-              ? `${address.substring(0, 6)}...${address.slice(-4)}`
-              : 'Connect Wallet'}
-          </span>
-        </button>
+        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          
+          <button
+            onClick={address ? disconnectWallet : connectWallet}
+            className="flex items-center gap-2 btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="flex items-center gap-2 btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-stellar-dark"
+            aria-label={address ? 'Wallet connected' : 'Connect wallet'}
+          >
+            <Wallet size={18} aria-hidden="true" />
+            <span>
+              {address
+                ? `${address.substring(0, 6)}...${address.slice(-4)}`
+                : 'Connect Wallet'}
+            </span>
+          </button>
+        </div>
       </header>
 
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-8" role="main">
-        
+
         {/* Mint Form */}
         <section className="lg:col-span-1" aria-labelledby="mint-heading">
           <div className="glass-card">
@@ -197,6 +223,63 @@ function App() {
                 {!isMinting && <ArrowRight size={18} aria-hidden="true" />}
               </button>
             </form>
+              <form onSubmit={handleMint} className="space-y-4" aria-describedby="form-description">
+                <p id="form-description" className="sr-only">
+                  Form to create a new token with name, symbol, and decimals
+                </p>
+
+                <div>
+                  <label htmlFor="token-name" className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Token Name
+                  </label>
+                  <input
+                    id="token-name"
+                    type="text"
+                    className="w-full input-field focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="token-symbol" className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Symbol
+                  </label>
+                  <input
+                    id="token-symbol"
+                    type="text"
+                    className="w-full input-field focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.symbol}
+                    onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="token-decimals" className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Decimals
+                  </label>
+                  <input
+                    id="token-decimals"
+                    type="number"
+                    className="w-full input-field focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.decimals}
+                    onChange={(e) => setFormData({ ...formData, decimals: parseInt(e.target.value) })}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isMinting}
+                  aria-busy={isMinting}
+                  className="w-full btn-primary mt-4 flex justify-center items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  <span>{isMinting ? 'Deploying...' : 'Mint Token'}</span>
+                  {!isMinting && <ArrowRight size={18} aria-hidden="true" />}
+                </button>
+              </form>
             )}
           </div>
         </section>
@@ -226,7 +309,7 @@ function App() {
               </div>
             ) : tokens.length === 0 ? (
               <div
-                className="flex flex-col items-center justify-center h-64 text-slate-400"
+                className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400"
                 role="status"
               >
                 <p>No tokens minted yet</p>
@@ -239,25 +322,25 @@ function App() {
                   aria-label="User tokens"
                 >
                   <thead>
-                    <tr className="border-b border-white/10 text-slate-300 text-sm">
+                    <tr className="border-b border-black/5 dark:border-white/10 text-slate-500 dark:text-slate-300 text-sm">
                       <th scope="col" className="pb-4 font-medium">Name</th>
                       <th scope="col" className="pb-4 font-medium">Symbol</th>
                       <th scope="col" className="pb-4 font-medium">Contract ID</th>
                       <th scope="col" className="pb-4 font-medium">Decimals</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-black/5 dark:divide-white/5">
                     {tokens.map((token, i) => (
                       <tr
                         key={i}
-                        className="hover:bg-white/5 transition-colors focus-within:bg-white/10"
+                        className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors focus-within:bg-black/10 dark:focus-within:bg-white/10"
                       >
                         <td className="py-4 font-medium">{token.name}</td>
-                        <td className="py-4 text-slate-300">{token.symbol}</td>
+                        <td className="py-4 text-slate-600 dark:text-slate-300">{token.symbol}</td>
                         <td className="py-4 font-mono text-sm text-stellar-blue truncate max-w-[120px]">
                           {token.contractId}
                         </td>
-                        <td className="py-4 text-slate-300">{token.decimals}</td>
+                        <td className="py-4 text-slate-600 dark:text-slate-300">{token.decimals}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -269,7 +352,7 @@ function App() {
       </main>
 
       <footer
-        className="mt-16 pt-8 border-t border-white/5 text-center text-slate-400 text-sm"
+        className="mt-16 pt-8 border-t border-black/5 dark:border-white/5 text-center text-slate-500 dark:text-slate-400 text-sm"
         role="contentinfo"
       >
         <p>&copy; 2026 SoroMint Platform. Built on Soroban.</p>
@@ -279,43 +362,3 @@ function App() {
 }
 
 export default App;
-  const onSubmit = async (data) => {
-    console.log("Form submitted:", data)
-    // Example: submit to API
-    // await axios.post("/api/submit", data)
-  }
-
-  return (
-    <div>
-      <h1>Submit your data</h1>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <div>
-          <label>Symbol</label>
-          <input
-            {...register("symbol", {
-              required: "Symbol is required",
-              pattern: {
-                value: /^[A-Z]{1,5}$/,
-                message: "Symbol must be 1-5 uppercase letters"
-              }
-            })}
-          />
-          {errors.symbol && <p style={{ color: "red" }}>{errors.symbol.message}</p>}
-        </div>
-
-        <div>
-          <label>Name</label>
-          <input
-            {...register("name", {
-              required: "Name is required",
-              minLength: { value: 3, message: "Name must be at least 3 characters" }
-            })}
-          />
-          {errors.name && <p style={{ color: "red" }}>{errors.name.message}</p>}
-        </div>
-
-        <button type="submit">Submit</button>
-      </form>
-    </div>
-  )
-}

@@ -101,6 +101,23 @@ function validateEnv() {
       default: 90,
       desc: "Disk usage % that triggers an alert (0-100)",
     }),
+    REDIS_URL: envalid.str({
+      default: "redis://localhost:6379",
+      desc: "Redis connection URL for caching",
+      example: "redis://localhost:6379",
+    }),
+    REDIS_PASSWORD: envalid.str({
+      default: "",
+      desc: "Redis password (optional)",
+    }),
+    REDIS_DB: envalid.num({
+      default: 0,
+      desc: "Redis database number",
+    }),
+    CACHE_TTL_METADATA: envalid.num({
+      default: 3600,
+      desc: "Cache TTL (Time-To-Live) in seconds for token metadata (default: 1 hour)",
+    }),
   }, {
     reporter: ({ errors, env }) => {
       if (Object.keys(errors).length > 0) {
@@ -114,6 +131,8 @@ function validateEnv() {
     port: cleanEnv.PORT,
     mongoUri: cleanEnv.MONGO_URI ? cleanEnv.MONGO_URI.replace(/\/\/.*@/, "//***@") : undefined,
     sorobanRpcUrls: cleanEnv.SOROBAN_RPC_URLS || cleanEnv.SOROBAN_RPC_URL,
+    redisUrl: cleanEnv.REDIS_URL ? cleanEnv.REDIS_URL.replace(/:.+@/, ":***@") : undefined,
+    cacheTtlMetadata: cleanEnv.CACHE_TTL_METADATA,
   });
 
   return cleanEnv;

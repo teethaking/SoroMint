@@ -10,6 +10,7 @@ const { initEnv, getEnv } = require("./config/env-config");
 initEnv();
 
 const { scheduleBackups } = require("./services/backup-service");
+const { getCacheService } = require("./services/cache-service");
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -33,6 +34,7 @@ const auditRoutes = require("./routes/audit-routes");
 const tokenRoutes = require("./routes/token-routes");
 const webhookRoutes = require("./routes/webhook-routes");
 const analyticsRoutes = require("./routes/analytics-routes");
+const notificationRoutes = require("./routes/notification-routes");
 
 const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) => {
   const app = express();
@@ -51,6 +53,7 @@ const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) 
   app.use("/api", auditRoutes);
   app.use("/api", tokenRouter);
   app.use("/api", analyticsRoutes);
+  app.use("/api", notificationRoutes);
   app.use("/api/auth", authRouter);
   app.use("/api", webhookRoutes);
 
@@ -74,6 +77,18 @@ const connectDatabase = async () => {
 
 const startServer = async () => {
   const env = getEnv();
+
+  // Initialize cache service
+  const cacheService = getCacheService();
+  try {
+    await cacheService.initialize();
+    logger.info("Cache service initialized successfully");
+  } catch (error) {
+    logger.warn("Cache service initialization failed, continuing without cache", {
+      error: error.message,
+    });
+  }
+
   await connectDatabase();
   const app = createApp();
 

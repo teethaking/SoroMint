@@ -16,43 +16,55 @@ The server uses [envalid](https://github.com/af/envalid) to validate environment
 
 ### Database Configuration
 
-| Variable | Type | Description | Example |
-|----------|------|-------------|---------|
-| `MONGO_URI` | URL | MongoDB connection string | `mongodb://localhost:27017/soromint` |
+| Variable    | Type | Description               | Example                              |
+| ----------- | ---- | ------------------------- | ------------------------------------ |
+| `MONGO_URI` | URL  | MongoDB connection string | `mongodb://localhost:27017/soromint` |
 
 ### JWT Authentication
 
-| Variable | Type | Description | Example |
-|----------|------|-------------|---------|
+| Variable     | Type   | Description                       | Example                     |
+| ------------ | ------ | --------------------------------- | --------------------------- |
 | `JWT_SECRET` | String | Secret key for signing JWT tokens | `your-super-secret-jwt-key` |
 
 ### Stellar/Soroban Configuration
 
-| Variable | Type | Description | Example |
-|----------|------|-------------|---------|
-| `SOROBAN_RPC_URL` | URL | Soroban RPC endpoint | `https://soroban-testnet.stellar.org` |
+| Variable    | Type | Description             | Example                  |
+| ----------- | ---- | ----------------------- | ------------------------ |
+| `REDIS_URL` | URL  | Redis connection string | `redis://127.0.0.1:6379` |
+
+---
+
+| Variable          | Type | Description          | Example                               |
+| ----------------- | ---- | -------------------- | ------------------------------------- |
+| `SOROBAN_RPC_URL` | URL  | Soroban RPC endpoint | `https://soroban-testnet.stellar.org` |
 
 ## Optional Environment Variables
 
 ### Server Configuration
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `PORT` | Port | `5000` | Port number for the Express server |
+| Variable   | Type   | Default       | Description                                                   |
+| ---------- | ------ | ------------- | ------------------------------------------------------------- |
+| `PORT`     | Port   | `5000`        | Port number for the Express server                            |
 | `NODE_ENV` | String | `development` | Application environment (`development`, `production`, `test`) |
 
 ### JWT Authentication
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `JWT_EXPIRES_IN` | String | `24h` | JWT token expiration time |
+| Variable         | Type   | Default | Description               |
+| ---------------- | ------ | ------- | ------------------------- |
+| `JWT_EXPIRES_IN` | String | `24h`   | JWT token expiration time |
 
 ### Stellar/Soroban Configuration
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `NETWORK_PASSPHRASE` | String | `Test SDF Network ; September 2015` | Stellar network passphrase |
-| `ADMIN_SECRET_KEY` | String | `""` | Optional admin secret key for server-side signing |
+| Variable             | Type   | Default                             | Description                                       |
+| -------------------- | ------ | ----------------------------------- | ------------------------------------------------- |
+| `NETWORK_PASSPHRASE` | String | `Test SDF Network ; September 2015` | Stellar network passphrase                        |
+| `ADMIN_SECRET_KEY`   | String | `""`                                | Optional admin secret key for server-side signing |
+
+### Caching Configuration
+
+| Variable          | Type   | Default | Description                                    |
+| ----------------- | ------ | ------- | ---------------------------------------------- |
+| `REDIS_CACHE_TTL` | Number | `3600`  | Default Time-To-Live for cache keys in seconds |
 
 ## Example .env File
 
@@ -65,8 +77,12 @@ NODE_ENV=development
 MONGO_URI=mongodb://localhost:27017/soromint
 
 # JWT Authentication (REQUIRED)
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_SECRET=YOUR_JWT_SECRET_HERE
 JWT_EXPIRES_IN=24h
+
+# Redis Caching (REQUIRED)
+REDIS_URL=redis://127.0.0.1:6379
+REDIS_CACHE_TTL=3600
 
 # Stellar / Soroban Configuration (REQUIRED)
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
@@ -110,6 +126,7 @@ The environment validation is implemented in `server/config/env-config.js`. Key 
 To test the environment validation:
 
 1. **Missing variables test**:
+
    ```bash
    # Temporarily rename .env file
    mv .env .env.backup
