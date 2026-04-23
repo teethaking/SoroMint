@@ -93,7 +93,7 @@ impl TokenFactory {
         address
     }
 
-    /// Deploys a new token contract (v2), initializes it, and sets a metadata hash.
+    /// Deploys a new token contract (v2), initializes it, and sets a metadata resolver.
     ///
     /// # Arguments
     /// * `salt`          - A unique 32-byte salt for the contract deployment.
@@ -101,7 +101,7 @@ impl TokenFactory {
     /// * `decimal`       - Number of decimal places for the new token.
     /// * `name`          - The name of the new token.
     /// * `symbol`        - The symbol of the new token.
-    /// * `metadata_hash` - An IPFS or content-addressed hash for off-chain metadata.
+    /// * `metadata_resolver` - Address of the resolver contract for off-chain metadata.
     ///
     /// # Returns
     /// The address of the newly deployed token contract.
@@ -115,7 +115,7 @@ impl TokenFactory {
         decimal: u32,
         name: String,
         symbol: String,
-        metadata_hash: String,
+        metadata_resolver: Address,
     ) -> Address {
         let wasm_hash: BytesN<32> = e.storage().instance().get(&DataKey::WasmHash).expect("not initialized");
 
@@ -135,15 +135,15 @@ impl TokenFactory {
             init_args,
         );
 
-        // Set the metadata hash on the newly deployed token contract
+        // Set the metadata resolver on the newly deployed token contract
         let meta_args = soroban_sdk::vec![
             &e,
-            metadata_hash.into_val(&e),
+            metadata_resolver.into_val(&e),
         ];
 
         e.invoke_contract::<()>(
             &address,
-            &Symbol::new(&e, "set_metadata_hash"),
+            &Symbol::new(&e, "set_metadata_resolver"),
             meta_args,
         );
 

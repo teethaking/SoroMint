@@ -8,7 +8,7 @@
 mod events;
 
 use soroban_sdk::token::TokenInterface;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol};
 
 #[contracttype]
 #[derive(Clone)]
@@ -21,6 +21,7 @@ pub enum DataKey {
     Decimals,
     Supply,
     MetadataHash,
+    MetadataResolver,
     FeeConfig,
 }
 
@@ -114,15 +115,31 @@ impl SoroMintToken {
         events::emit_ownership_transfer(&e, &admin, &new_admin);
     }
 
+    /// Legacy method to set metadata hash directly. Preserved for v1 compatibility.
     pub fn set_metadata_hash(e: Env, hash: String) {
         let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
         e.storage().instance().set(&DataKey::MetadataHash, &hash);
-        // Using a simpler version of metadata update event for hash
-        // events::emit_metadata_updated(&e, &admin, &hash); // This was in old code, but let's stick to update_metadata
     }
 
+    /// Sets a resolver contract address that will provide the metadata hash.
+    /// This decouples metadata storage from the core token contract.
+    pub fn set_metadata_resolver(e: Env, resolver: Address) {
+        let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::MetadataResolver, &resolver);
+    }
+
+    /// Retrieves the metadata hash. Priorities the resolver if set, 
+    /// otherwise falls back to the locally stored hash.
     pub fn metadata_hash(e: Env) -> Option<String> {
+        if let Some(resolver) = e.storage().instance().get::<Address>(&DataKey::MetadataResolver) {
+            return e.invoke_contract::<Option<String>>(
+                &resolver,
+                &Symbol::new(&e, "get_metadata_hash"),
+                soroban_sdk::vec![&e],
+            );
+        }
         e.storage().instance().get(&DataKey::MetadataHash)
     }
 
