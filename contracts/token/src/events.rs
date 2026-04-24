@@ -153,3 +153,8 @@ pub fn emit_delegate_mint(
     let topics = (Symbol::new(e, "dlg_mint"), delegate.clone(), owner.clone(), to.clone());
     e.events().publish(topics, (amount, new_balance, new_supply));
 }
+
+pub fn emit_transferability_updated(e: &Env, admin: &Address, transferable: bool) {
+    let topics = (symbol_short!("xferable"), admin.clone());
+    e.events().publish(topics, transferable);
+}
