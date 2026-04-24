@@ -10,7 +10,7 @@ mod events;
 mod test_transfer;
 
 use soroban_sdk::token::TokenInterface;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, String};
 
 #[contracttype]
 #[derive(Clone)]
@@ -24,7 +24,8 @@ pub enum DataKey {
     Supply,
     MetadataHash,
     FeeConfig,
-    Transferable
+    Transferable,
+    Verified(Address),
 }
 
 #[contracttype]
@@ -182,6 +183,26 @@ impl SoroMintToken {
 
         events::emit_metadata_updated(&e, &admin, &old_name, &old_symbol, &new_name, &new_symbol);
     }
+
+    pub fn submit_zk_kyc_proof(e: Env, addr: Address, proof: Bytes) -> bool {
+        // Placeholder ZK verification - in real implementation, verify the proof against public inputs
+        // For now, accept any non-empty proof as valid
+        if proof.len() > 0 {
+            e.storage().persistent().set(&DataKey::Verified(addr), &true);
+            return true;
+        }
+        false
+    }
+
+    pub fn is_verified(e: Env, addr: Address) -> bool {
+        e.storage().persistent().get(&DataKey::Verified(addr)).unwrap_or(false)
+    }
+
+    pub fn require_verified(e: &Env, addr: Address) {
+        if !Self::is_verified(e.clone(), addr.clone()) {
+            panic!("Address not verified for KYC/AML");
+        }
+    }
 }
 
 #[contractimpl]
@@ -204,6 +225,8 @@ impl TokenInterface for SoroMintToken {
         soromint_lifecycle::require_not_paused(&e);
         Self::check_transferable(&e);
         from.require_auth();
+        Self::require_verified(&e, from.clone());
+        Self::require_verified(&e, to.clone());
         if amount <= 0 { panic!("transfer amount must be positive"); }
         let (nf, nt) = Self::move_balance(&e, &from, &to, amount);
         events::emit_transfer(&e, &from, &to, amount, nf, nt);
@@ -213,6 +236,8 @@ impl TokenInterface for SoroMintToken {
         soromint_lifecycle::require_not_paused(&e);
         Self::check_transferable(&e);
         spender.require_auth();
+        Self::require_verified(&e, from.clone());
+        Self::require_verified(&e, to.clone());
         if amount <= 0 { panic!("transfer amount must be positive"); }
         let al = Self::read_allowance(&e, &from, &spender);
         if al < amount { panic!("insufficient allowance"); }
