@@ -38,7 +38,7 @@ const analyticsRoutes = require("./routes/analytics-routes");
 const notificationRoutes = require("./routes/notification-routes");
 const multiSigRoutes = require("./routes/multisig-routes");
 const vaultRoutes = require("./routes/vault-routes");
-const nftRoutes = require("./routes/nft-routes");
+const dividendRoutes = require("./routes/dividend-routes");
 
 const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) => {
   const app = express();
@@ -63,8 +63,7 @@ const createApp = ({ authRouter = authRoutes, tokenRouter = tokenRoutes } = {}) 
   app.use("/api", webhookRoutes);
   app.use("/api/multisig", multiSigRoutes);
   app.use("/api/vault", vaultRoutes);
-  app.use("/api/nfts", nftRoutes);
-  app.use(express.static("public"));
+  app.use("/api", dividendRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
