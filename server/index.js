@@ -33,6 +33,7 @@ const authRoutes = require('./routes/auth-routes');
 const statusRoutes = require('./routes/status-routes');
 const auditRoutes = require('./routes/audit-routes');
 const tokenRoutes = require('./routes/token-routes');
+const feeRoutes = require('./routes/fee-routes');
 const webhookRoutes = require('./routes/webhook-routes');
 const analyticsRoutes = require('./routes/analytics-routes');
 const notificationRoutes = require('./routes/notification-routes');
@@ -63,6 +64,7 @@ const createApp = ({
   app.use('/api', statusRoutes);
   app.use('/api', auditRoutes);
   app.use('/api', tokenRouter);
+  app.use('/api', feeRoutes);
   app.use('/api', analyticsRoutes);
   app.use('/api', notificationRoutes);
   app.use('/api/auth', authRouter);
