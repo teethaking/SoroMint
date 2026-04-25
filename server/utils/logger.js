@@ -191,8 +191,7 @@ const httpLoggerMiddleware = (req, res, next) => {
     successSampleRate,
     includeClientMetadataForSuccess,
   } = getHttpRequestLoggingConfig();
-  const shouldTrackSuccessfulRequests = successSampleRate > 0;
-  const startTimeMs = shouldTrackSuccessfulRequests ? Date.now() : null;
+  const startTimeMs = Date.now();
 
   const addFinishListener = typeof res.once === 'function' ? res.once.bind(res) : res.on.bind(res);
 
@@ -214,9 +213,7 @@ const httpLoggerMiddleware = (req, res, next) => {
       statusCode,
     };
 
-    if (startTimeMs !== null) {
-      logData.durationMs = Date.now() - startTimeMs;
-    }
+    logData.durationMs = Date.now() - startTimeMs;
 
     if (!isSuccessfulResponse || includeClientMetadataForSuccess) {
       logData.ip = req.ip || req.connection?.remoteAddress;
