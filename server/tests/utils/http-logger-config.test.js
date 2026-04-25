@@ -10,6 +10,9 @@ describe('HTTP logger sampling', () => {
     const listeners = {};
     return {
       statusCode,
+      once: jest.fn((event, callback) => {
+        listeners[event] = callback;
+      }),
       on: jest.fn((event, callback) => {
         listeners[event] = callback;
       }),
@@ -41,6 +44,7 @@ describe('HTTP logger sampling', () => {
       connection: { remoteAddress: '127.0.0.1' },
       get: jest.fn(() => 'agent'),
       correlationId: 'cid',
+      requestId: 'cid',
     };
 
     httpLoggerMiddleware(request, response, jest.fn());
@@ -51,7 +55,7 @@ describe('HTTP logger sampling', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('always logs client and server errors even when 2xx logging is disabled', () => {
+  it('always logs client and server errors with duration when 2xx logging is disabled', () => {
     process.env = {
       ...originalEnv,
       NODE_ENV: 'test',
@@ -71,6 +75,7 @@ describe('HTTP logger sampling', () => {
       connection: { remoteAddress: '127.0.0.1' },
       get: jest.fn(() => 'agent'),
       correlationId: 'cid',
+      requestId: 'cid',
     };
 
     httpLoggerMiddleware(request, warnResponse, jest.fn());
@@ -80,11 +85,23 @@ describe('HTTP logger sampling', () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       'HTTP Request',
-      expect.objectContaining({ statusCode: 404, ip: '127.0.0.1' })
+      expect.objectContaining({
+        requestId: 'cid',
+        correlationId: 'cid',
+        statusCode: 404,
+        ip: '127.0.0.1',
+        durationMs: expect.any(Number),
+      })
     );
     expect(logger.error).toHaveBeenCalledWith(
       'HTTP Request',
-      expect.objectContaining({ statusCode: 500, ip: '127.0.0.1' })
+      expect.objectContaining({
+        requestId: 'cid',
+        correlationId: 'cid',
+        statusCode: 500,
+        ip: '127.0.0.1',
+        durationMs: expect.any(Number),
+      })
     );
   });
 
@@ -139,6 +156,7 @@ describe('HTTP logger sampling', () => {
       connection: { remoteAddress: '127.0.0.1' },
       get: jest.fn(() => 'agent'),
       correlationId: 'cid',
+      requestId: 'cid',
     };
 
     httpLoggerMiddleware(request, response, jest.fn());

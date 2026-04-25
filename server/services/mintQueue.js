@@ -1,4 +1,5 @@
 import { Queue, Worker } from 'bullmq';
+import logger from '../utils/logger';
 import Redis from 'ioredis';
 import {
   Keypair,
@@ -22,14 +23,19 @@ const NETWORK_PASSPHRASE = process.env.NETWORK_PASSPHRASE || Networks.TESTNET;
 const rpcServer = new SorobanRpc.Server(RPC_URL);
 
 if (!process.env.ADMIN_SECRET_KEY) {
-  console.warn("WARNING: ADMIN_SECRET_KEY is not set in the environment variables!");
+  logger.warn('ADMIN_SECRET_KEY is not set in the environment variables');
 }
 
 // 4. Create the Worker
 const mintWorker = new Worker(
   'MintQueue',
   async (job) => {
-    console.log(`[MintWorker] Processing job ${job.id}...`);
+    logger.info('Mint worker processing job', {
+      jobId: job.id,
+      contractId: job.data.contractId,
+      recipientAddress: job.data.recipientAddress,
+      amount: job.data.amount,
+    });
     const { contractId, recipientAddress, amount } = job.data;
 
     try {
@@ -55,14 +61,24 @@ const mintWorker = new Worker(
         .build();
 
       // 4c. Simulate & Prepare
-      console.log(`[MintWorker] Simulating transaction for job ${job.id}...`);
+      logger.info('Mint worker simulating transaction', {
+        jobId: job.id,
+        contractId,
+        recipientAddress,
+        amount,
+      });
       const preparedTx = await rpcServer.prepareTransaction(tx);
 
       // 4d. Sign the fully assembled transaction
       preparedTx.sign(adminKeypair);
 
       // 4e. Submit to the network
-      console.log(`[MintWorker] Submitting transaction to Soroban...`);
+      logger.info('Mint worker submitting transaction', {
+        jobId: job.id,
+        contractId,
+        recipientAddress,
+        amount,
+      });
       const sendResponse = await rpcServer.sendTransaction(preparedTx);
 
       if (sendResponse.status === 'ERROR') {
@@ -70,7 +86,13 @@ const mintWorker = new Worker(
       }
 
       // 4f. Poll for the final status
-      console.log(`[MintWorker] Transaction submitted with hash ${sendResponse.hash}. Waiting for ledger...`);
+      logger.info('Mint worker transaction submitted', {
+        jobId: job.id,
+        contractId,
+        recipientAddress,
+        amount,
+        txHash: sendResponse.hash,
+      });
       
       let txStatus = await rpcServer.getTransaction(sendResponse.hash);
       let attempts = 0;
@@ -86,14 +108,26 @@ const mintWorker = new Worker(
       }
 
       if (txStatus.status === 'SUCCESS') {
-        console.log(`[MintWorker] Successfully minted ${amount} tokens to ${recipientAddress} via contract ${contractId}`);
+        logger.info('Mint worker successfully minted tokens', {
+          jobId: job.id,
+          contractId,
+          recipientAddress,
+          amount,
+          txHash: sendResponse.hash,
+        });
         return { success: true, txHash: sendResponse.hash };
       }
 
       throw new Error(`Transaction timed out or stuck in unknown state: ${txStatus.status}`);
 
     } catch (error) {
-      console.error(`[MintWorker] Failed to execute mint for job ${job.id}:`, error);
+      logger.error('Mint worker failed to execute mint', {
+        jobId: job.id,
+        contractId,
+        recipientAddress,
+        amount,
+        error,
+      });
       throw error; 
     }
   },
@@ -120,6 +154,13 @@ export async function scheduleMint(payload, executeAt) {
     }
   });
 
-  console.log(`[MintQueue] Scheduled mint job ${job.id} for ${executeAt.toISOString()}`);
+  logger.info('Scheduled mint job', {
+    jobId: job.id,
+    contractId: payload.contractId,
+    recipientAddress: payload.recipientAddress,
+    amount: payload.amount,
+    executeAt: executeAt.toISOString(),
+    delayMs: delay,
+  });
   return job.id;
 }
