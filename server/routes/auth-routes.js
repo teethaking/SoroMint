@@ -5,6 +5,7 @@ const passport = require('passport');
 const { generateToken, authenticate, optionalAuthenticate } = require('../middleware/auth');
 const { asyncHandler, AppError } = require('../middleware/error-handler');
 const { loginRateLimiter } = require('../middleware/rate-limiter');
+const { logger, withRequestContext } = require('../utils/logger');
 const {
   generateChallenge,
   verifyChallenge,
@@ -212,7 +213,10 @@ const createAuthRouter = ({ authLoginRateLimiter = loginRateLimiter } = {}) => {
     // if (!isValidSignature) {
     //   throw new AppError('Invalid signature. Authentication failed.', 401, 'INVALID_SIGNATURE');
     // }
-    console.log('[Login] Signature/challenge provided but not yet validated (MVP mode)');
+    logger.info(
+      'Login signature and challenge provided but not yet validated',
+      withRequestContext(req, { publicKey: normalizedPublicKey })
+    );
   }
 
   // Update last login timestamp

@@ -8,7 +8,7 @@
  *      Custom errors can be created using the AppError class for specific error codes.
  */
 
-const { logger } = require('../utils/logger');
+const { logger, withRequestContext } = require('../utils/logger');
 const { captureException, addBreadcrumb } = require('../config/sentry');
 
 /**
@@ -65,30 +65,22 @@ const formatErrorResponse = (err, isProduction) => {
  * @param {Object} req - Express request object for context
  * @param {boolean} isProduction - Whether running in production mode
  */
-const logError = (err, req, isProduction) => {
-  const logData = {
-    message: err.message,
-    code: err.code || 'INTERNAL_ERROR',
-    statusCode: err.statusCode || 500,
-    path: req.originalUrl,
-    method: req.method,
-    correlationId: req.correlationId,
-    isOperational: err.isOperational || false
-  };
+const logError = (err, req, originalError = err) => {
+  const statusCode = err.statusCode || 500;
+  const logLevel = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
+  const logMessage = statusCode >= 500 ? 'Internal Server Error' : statusCode >= 400 ? 'Client Error' : 'Error';
 
-  // Include stack trace in log data
-  if (err.stack) {
-    logData.stack = err.stack;
-  }
-
-  // Log with appropriate level based on error severity
-  if (err.statusCode >= 500) {
-    logger.error('Internal Server Error', logData);
-  } else if (err.statusCode >= 400) {
-    logger.warn('Client Error', logData);
-  } else {
-    logger.info('Error', logData);
-  }
+  logger[logLevel](
+    logMessage,
+    withRequestContext(req, {
+      path: req.originalUrl,
+      method: req.method,
+      statusCode,
+      code: err.code || 'INTERNAL_ERROR',
+      isOperational: Boolean(err.isOperational),
+      error: originalError,
+    })
+  );
 };
 
 /**
@@ -175,10 +167,10 @@ const errorHandler = (err, req, res, next) => {
       500,
       'INTERNAL_ERROR'
     );
+    processedError.isOperational = false;
   }
 
-  // Log the error
-  logError(processedError, req, isProduction);
+  logError(processedError, req, err);
 
   const statusCode = processedError.statusCode || 500;
 

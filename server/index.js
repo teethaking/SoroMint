@@ -129,10 +129,11 @@ const startServer = async () => {
   const server = app.listen(env.PORT, () => {
     logStartupInfo(env.PORT, env.NETWORK_PASSPHRASE);
     sampler.start();
-    console.log(`Server running on http://localhost:${env.PORT}`);
-    console.log(
-      `API Documentation available at http://localhost:${env.PORT}/api-docs`
-    );
+    logger.info('Server listening', {
+      port: env.PORT,
+      url: `http://localhost:${env.PORT}`,
+      docsUrl: `http://localhost:${env.PORT}/api-docs`,
+    });
     scheduleBackups();
   });
 
@@ -141,7 +142,7 @@ const startServer = async () => {
 
 if (require.main === module) {
   startServer().catch((error) => {
-    logger.error('Server failed to start', { error: error.message });
+    logger.error('Server failed to start', { error });
     setImmediate(() => {
       throw error;
     });
