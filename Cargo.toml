@@ -3,15 +3,19 @@ resolver = "2"
 
 members = [
     "contracts/access",
+    "contracts/backstop",
     "contracts/compliance",
     "contracts/dividend",
     "contracts/factory",
     "contracts/lifecycle",
+    "contracts/lottery",
     "contracts/multisig",
     "contracts/oracle",
     "contracts/ownership",
     "contracts/token",
+    "contracts/upgradeable",
     "contracts/vault",
+    "contracts/vesting",
 ]
 
 
