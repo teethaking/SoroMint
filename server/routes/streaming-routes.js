@@ -5,6 +5,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/error-handler');
 const { logger } = require('../utils/logger');
+const { exportRateLimiter } = require('../middleware/rate-limiter');
 
 const { Transform } = require('stream');
 
@@ -56,10 +57,17 @@ const CSV_HEADERS =
 router.get(
   '/export',
   authenticate,
+  exportRateLimiter,
   [
     query('format').optional().isIn(['csv', 'json']),
-    query('startDate').optional().isISO8601().withMessage('Invalid startDate format'),
-    query('endDate').optional().isISO8601().withMessage('Invalid endDate format'),
+    query('startDate')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid startDate format'),
+    query('endDate')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid endDate format'),
     validate,
   ],
   asyncHandler(async (req, res) => {
@@ -137,8 +145,15 @@ router.post(
   ],
   async (req, res, next) => {
     try {
-      const { sender, recipient, tokenAddress, totalAmount, startLedger, stopLedger } = req.body;
-      
+      const {
+        sender,
+        recipient,
+        tokenAddress,
+        totalAmount,
+        startLedger,
+        stopLedger,
+      } = req.body;
+
       const service = new StreamingService(
         process.env.SOROBAN_RPC_URL,
         process.env.NETWORK_PASSPHRASE
@@ -155,7 +170,13 @@ router.post(
         stopLedger
       );
 
-      res.status(201).json({ success: true, streamId: result.streamId, txHash: result.hash });
+      res
+        .status(201)
+        .json({
+          success: true,
+          streamId: result.streamId,
+          txHash: result.hash,
+        });
     } catch (error) {
       next(error);
     }
@@ -230,7 +251,10 @@ router.get(
         process.env.NETWORK_PASSPHRASE
       );
 
-      const stream = await service.getStream(process.env.STREAMING_CONTRACT_ID, streamId);
+      const stream = await service.getStream(
+        process.env.STREAMING_CONTRACT_ID,
+        streamId
+      );
 
       if (!stream) {
         return res.status(404).json({ error: 'Stream not found' });
@@ -255,7 +279,10 @@ router.get(
         process.env.NETWORK_PASSPHRASE
       );
 
-      const balance = await service.getStreamBalance(process.env.STREAMING_CONTRACT_ID, streamId);
+      const balance = await service.getStreamBalance(
+        process.env.STREAMING_CONTRACT_ID,
+        streamId
+      );
 
       res.json({ success: true, balance });
     } catch (error) {

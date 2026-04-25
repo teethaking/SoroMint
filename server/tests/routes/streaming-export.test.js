@@ -64,7 +64,7 @@ describe('GET /api/streaming/export', () => {
         stopLedger: 200,
         status: 'active',
         createdTxHash: 'hash1',
-        createdAt: new Date('2024-01-15')
+        createdAt: new Date('2024-01-15'),
       },
       {
         streamId: '2',
@@ -78,7 +78,7 @@ describe('GET /api/streaming/export', () => {
         stopLedger: 400,
         status: 'completed',
         createdTxHash: 'hash2',
-        createdAt: new Date('2024-02-20')
+        createdAt: new Date('2024-02-20'),
       },
       {
         streamId: '3',
@@ -92,8 +92,8 @@ describe('GET /api/streaming/export', () => {
         stopLedger: 600,
         status: 'active',
         createdTxHash: 'hash3',
-        createdAt: new Date('2024-03-10')
-      }
+        createdAt: new Date('2024-03-10'),
+      },
     ]);
   };
 
@@ -105,8 +105,10 @@ describe('GET /api/streaming/export', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
-    expect(res.text).toContain('streamId,contractId,sender,recipient,tokenAddress');
-    
+    expect(res.text).toContain(
+      'streamId,contractId,sender,recipient,tokenAddress'
+    );
+
     const lines = res.text.trim().split('\n');
     expect(lines).toHaveLength(3); // header + 2 rows (PK is sender in #1 and recipient in #2)
     expect(res.text).toContain('"1"');
