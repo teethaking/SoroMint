@@ -88,6 +88,39 @@ describe('HTTP logger sampling', () => {
     );
   });
 
+  it('includes durationMs for 500 responses when HTTP_LOG_SUCCESS_SAMPLE_RATE=0', () => {
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: 'test',
+      HTTP_LOG_SUCCESS_SAMPLE_RATE: '0',
+    };
+
+    const { httpLoggerMiddleware, logger } = loadLoggerModule();
+    logger.error = jest.fn();
+    const response = createResponse(500);
+    const request = {
+      method: 'GET',
+      originalUrl: '/api/health',
+      ip: '127.0.0.1',
+      connection: { remoteAddress: '127.0.0.1' },
+      get: jest.fn(() => 'agent'),
+      correlationId: 'cid',
+    };
+
+    httpLoggerMiddleware(request, response, jest.fn());
+    response.finish();
+
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      'HTTP Request',
+      expect.objectContaining({
+        statusCode: 500,
+        durationMs: expect.any(Number),
+      })
+    );
+    expect(logger.error.mock.calls[0][1].durationMs).toBeGreaterThanOrEqual(0);
+  });
+
   it('can omit client metadata for sampled 2xx requests', () => {
     process.env = {
       ...originalEnv,
