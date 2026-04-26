@@ -7,10 +7,19 @@ mod events;
 mod test;
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenInfo {
+    pub admin: Address,
+    pub supply: i128,
+    pub decimals: u32,
+    pub name: String,
+    pub symbol: String,
+}
+
+#[contracttype]
 #[derive(Clone)]
-enum DataKey {
-    Admin,
-    Supply,
+pub enum DataKey {
+    TokenInfo,
     Balance(Address),
 }
 
@@ -43,107 +52,66 @@ pub struct SoroMintToken;
 #[contractimpl]
 impl SoroMintToken {
     /// Initializes the SoroMint token contract.
-    ///
-    /// # Arguments
-    /// * `admin`   - Address that will serve as the contract administrator.
-    /// * `decimal` - Number of decimal places for the token.
-    /// * `name`    - Human-readable token name.
-    /// * `symbol`  - Token ticker symbol.
-    ///
-    /// # Panics
-    /// Panics if the contract has already been initialized.
-    ///
-    /// # Events
-    /// Emits an `initialized` event with `(admin, decimal, name, symbol)`.
     pub fn initialize(e: Env, admin: Address, decimal: u32, name: String, symbol: String) {
-        if e.storage().instance().has(&DataKey::Admin) {
+        if e.storage().instance().has(&DataKey::TokenInfo) {
             panic!("already initialized");
         }
-        e.storage().instance().set(&DataKey::Admin, &admin);
-        e.storage().instance().set(&DataKey::Supply, &0i128);
 
+        let info = TokenInfo {
+            admin: admin.clone(),
+            supply: 0,
+            decimals: decimal,
+            name: name.clone(),
+            symbol: symbol.clone(),
+        };
+
+        e.storage().instance().set(&DataKey::TokenInfo, &info);
+
+        // Issue #493: Mandatory Event Logging
         events::emit_initialized(&e, &admin, decimal, &name, &symbol);
     }
 
     /// Mints new tokens to a recipient address.
-    ///
-    /// # Arguments
-    /// * `to`     - The address receiving the newly minted tokens.
-    /// * `amount` - The quantity of tokens to mint.
-    ///
-    /// # Authorization
-    /// Requires the current admin to authorize the transaction.
-    ///
-    /// # Events
-    /// Emits a `mint` event with `(admin, to, amount, new_balance, new_supply)`.
     pub fn mint(e: Env, to: Address, amount: i128) {
         if amount <= 0 {
             panic!("mint amount must be positive");
         }
-        let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
-        let balance = Self::balance(e.clone(), to.clone());
-        let new_balance = balance.checked_add(amount).expect("balance overflow");
-        e.storage().persistent().set(&DataKey::Balance(to), &new_balance);
-        let supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap();
-        let new_supply = supply.checked_add(amount).expect("supply overflow");
-        e.storage().instance().set(&DataKey::Supply, &new_supply);
-    }
+        
+        let mut info: TokenInfo = e.storage().instance().get(&DataKey::TokenInfo).expect("Not initialized");
+        info.admin.require_auth();
 
         let mut balance = Self::balance(e.clone(), to.clone());
-        balance += amount;
-        e.storage()
-            .persistent()
-            .set(&DataKey::Balance(to.clone()), &balance);
+        balance = balance.checked_add(amount).expect("balance overflow");
+        e.storage().persistent().set(&DataKey::Balance(to.clone()), &balance);
 
-        let mut supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap();
-        supply += amount;
-        e.storage().instance().set(&DataKey::Supply, &supply);
+        info.supply = info.supply.checked_add(amount).expect("supply overflow");
+        e.storage().instance().set(&DataKey::TokenInfo, &info);
 
-        events::emit_mint(&e, &admin, &to, amount, balance, supply);
+        // Issue #493: Mandatory Event Logging
+        events::emit_mint(&e, &info.admin, &to, amount, balance, info.supply);
     }
 
     /// Burns tokens from a holder's balance.
-    ///
-    /// # Arguments
-    /// * `from`   - The address whose tokens will be burned.
-    /// * `amount` - The quantity of tokens to burn.
-    ///
-    /// # Authorization
-    /// Requires the current admin to authorize the transaction.
-    ///
-    /// # Panics
-    /// Panics if `from` has insufficient balance.
-    ///
-    /// # Events
-    /// Emits a `burn` event with `(admin, from, amount, new_balance, new_supply)`.
     pub fn burn(e: Env, from: Address, amount: i128) {
-        let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+        let mut info: TokenInfo = e.storage().instance().get(&DataKey::TokenInfo).expect("Not initialized");
+        info.admin.require_auth();
 
-        let balance = Self::balance(e.clone(), from.clone());
+        let mut balance = Self::balance(e.clone(), from.clone());
         if balance < amount {
             panic!("insufficient balance to burn");
         }
-        let new_balance = balance - amount;
-        e.storage()
-            .persistent()
-            .set(&DataKey::Balance(from.clone()), &new_balance);
+        
+        balance -= amount;
+        e.storage().persistent().set(&DataKey::Balance(from.clone()), &balance);
 
-        let mut supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap();
-        supply -= amount;
-        e.storage().instance().set(&DataKey::Supply, &supply);
+        info.supply -= amount;
+        e.storage().instance().set(&DataKey::TokenInfo, &info);
 
-        events::emit_burn(&e, &admin, &from, amount, new_balance, supply);
+        // Issue #493: Mandatory Event Logging
+        events::emit_burn(&e, &info.admin, &from, amount, balance, info.supply);
     }
 
     /// Returns the token balance for a given address.
-    ///
-    /// # Arguments
-    /// * `id` - The address to query.
-    ///
-    /// # Returns
-    /// The token balance, or `0` if no balance has been recorded.
     pub fn balance(e: Env, id: Address) -> i128 {
         e.storage()
             .persistent()
@@ -151,33 +119,27 @@ impl SoroMintToken {
             .unwrap_or(0)
     }
 
+
     /// Returns the total token supply.
-    ///
-    /// # Returns
-    /// The current total supply of minted tokens.
     pub fn supply(e: Env) -> i128 {
-        e.storage().instance().get(&DataKey::Supply).unwrap_or(0)
+        let info: TokenInfo = e.storage().instance().get(&DataKey::TokenInfo).expect("Not initialized");
+        info.supply
     }
 
     /// Transfers the admin (owner) role to a new address.
-    ///
-    /// # Arguments
-    /// * `new_admin` - The address that will become the new administrator.
-    ///
-    /// # Authorization
-    /// Requires the current admin to authorize the transaction.
-    ///
-    /// # Events
-    /// Emits an `ownership_transfer` event with `(prev_admin, new_admin)`.
     pub fn transfer_ownership(e: Env, new_admin: Address) {
-        let prev_admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
-        prev_admin.require_auth();
+        let mut info: TokenInfo = e.storage().instance().get(&DataKey::TokenInfo).expect("Not initialized");
+        info.admin.require_auth();
 
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        let prev_admin = info.admin.clone();
+        info.admin = new_admin.clone();
+        e.storage().instance().set(&DataKey::TokenInfo, &info);
 
+        // Issue #493: Mandatory Event Logging
         events::emit_ownership_transfer(&e, &prev_admin, &new_admin);
     }
 }
+
 
 #[cfg(test)]
 mod test;
