@@ -256,6 +256,67 @@ const createLoggerTransports = () => {
     ),
   ];
 };
+/**
+ * @notice Custom format for structured logging
+ * @dev Creates a consistent log format with timestamp, level, message, and metadata
+ * @param {string} correlationId - Optional request correlation ID for tracing
+ * @param {string} level - Log level (error, warn, info, http, debug)
+ * @param {string} message - Log message
+ * @param {Object} metadata - Additional context/metadata
+ * @returns {Object} Formatted log entry
+ */
+const logFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+  winston.format.errors({ stack: true }),
+  winston.format.splat(),
+  winston.format.json()
+);
+
+/**
+ * @notice Console transport configuration
+ * @dev Outputs colored logs to console for development and debugging
+ *      Uses a simplified format for better readability
+ */
+const consoleTransport = new winston.transports.Console({
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.printf(
+      ({ timestamp, level, message, correlationId, ...metadata }) => {
+        const correlationPrefix = correlationId ? `[${correlationId}] ` : '';
+        let logMessage = `${timestamp} ${level}: ${correlationPrefix}${message}`;
+
+        // Include additional metadata if present
+        const metaKeys = Object.keys(metadata).filter(
+          (key) => key !== 'timestamp' && key !== 'level' && key !== 'message'
+        );
+
+        if (metaKeys.length > 0) {
+          const metaString = metaKeys
+            .map((key) => `${key}=${metadata[key]}`)
+            .join(' ');
+          logMessage += ` ${metaString}`;
+        }
+
+        return logMessage;
+      }
+    )
+  ),
+});
+
+/**
+ * @notice File transport with daily rotation
+ * @dev Rotates log files daily and keeps logs for 30 days
+ *      Stores logs in logs/server.log with date-based rotation
+ */
+const fileTransport = new DailyRotateFile({
+  filename: path.join(process.cwd(), 'logs', 'server.log'),
+  datePattern: 'YYYY-MM-DD',
+  maxSize: '20m',
+  maxFiles: '30d',
+  format: logFormat,
+  level: 'debug',
+});
 
 const logger = winston.createLogger({
   levels: winston.config.npm.levels,
@@ -323,12 +384,26 @@ const createRequestLogger = (req) => ({
   debug(message, metadata = {}) {
     return logger.debug(message, withRequestContext(req, metadata));
   },
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  defaultMeta: {
+    service: 'soromint-server',
+    environment: process.env.NODE_ENV || 'development',
+  },
+  transports: [consoleTransport, fileTransport],
+  exitOnError: false,
 });
 
 const correlationIdMiddleware = (req, res, next) => {
   req.correlationId = req.headers['x-correlation-id'] || generateCorrelationId();
   req.requestId = req.correlationId;
   res.setHeader('X-Correlation-ID', req.correlationId);
+  // Get correlation ID from header or generate new one
+  req.correlationId =
+    req.headers['x-correlation-id'] || generateCorrelationId();
+
+  // Set response header for client tracing
+  res.setHeader('X-Correlation-ID', req.correlationId);
+
   next();
 };
 
@@ -365,6 +440,24 @@ const httpLoggerMiddleware = (req, res, next) => {
     }
 
     if (statusCode >= 500) {
+  const startTime = Date.now();
+  const correlationId = req.correlationId;
+
+  // Log when response is finished
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    const logData = {
+      correlationId,
+      method: req.method,
+      url: req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs: duration,
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('user-agent'),
+    };
+
+    // Log level based on status code
+    if (res.statusCode >= 500) {
       logger.error('HTTP Request', logData);
     } else if (statusCode >= 400) {
       logger.warn('HTTP Request', logData);
@@ -381,17 +474,31 @@ const logStartupInfo = (port, network) => {
     port,
     network,
     nodeEnv: getEnvironment(),
+    nodeEnv: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
   });
 };
 
 const logShutdownInfo = (reason) => {
   logger.warn('Server shutting down', { reason });
+  logger.warn('Server shutting down', {
+    reason,
+    timestamp: new Date().toISOString(),
+  });
 };
 
 const logDatabaseConnection = (success, error = null) => {
   if (success) {
     logger.info('MongoDB Connected');
     return;
+    logger.info('MongoDB Connected', {
+      timestamp: new Date().toISOString(),
+    });
+  } else {
+    logger.error('MongoDB Connection Error', {
+      error: error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString(),
+    });
   }
 
   logger.error('MongoDB Connection Error', {
@@ -403,6 +510,7 @@ const logRouteRegistration = (method, routePath) => {
   logger.debug('Route registered', {
     method,
     path: routePath,
+    path,
   });
 };
 
@@ -427,3 +535,4 @@ Object.assign(logger, {
 });
 
 module.exports = logger;
+};
